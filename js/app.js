@@ -30,7 +30,13 @@
 
   // 表示を描き直す
   function redraw() {
-    Render.draw(el.gantt, view, view.showHidden);
+    Render.draw(el.gantt, view, {
+      showHidden: view.showHidden,
+      // 案件行・バーのクリックで編集ポップアップ（CLAUDE.md 5.6）
+      onOpenProject: Popup.openProject,
+      // 担当者ヘッダの「＋」で新規案件（CLAUDE.md 5.7）
+      onAddProject: Popup.addProject
+    });
   }
 
   // 表示状態を確定して保存・再描画する

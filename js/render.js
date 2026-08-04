@@ -183,7 +183,7 @@ var Render = (function () {
   }
 
   // 左側: 部署名・担当者・案件タイトル
-  function buildLabelRow(row) {
+  function buildLabelRow(row, handlers) {
     var node = el('div', rowClass(row));
 
     if (row.kind === 'dept') {
@@ -198,6 +198,18 @@ var Render = (function () {
       if (m.countText) { node.appendChild(el('span', 'member__count', '（' + m.countText + '）')); }
       if (m.emoji) { node.appendChild(el('span', 'member__emoji', m.emoji)); }
       if (m.comment) { node.appendChild(el('span', 'member__comment', m.comment)); }
+
+      // 行末に新規案件追加の「＋」ボタン（CLAUDE.md 5.4 / 5.7）
+      if (handlers.onAddProject) {
+        var add = el('button', 'member__add', '＋');
+        add.type = 'button';
+        add.title = m.name + 'さんに案件を追加';
+        add.addEventListener('click', function (e) {
+          e.stopPropagation();
+          handlers.onAddProject(m.id);
+        });
+        node.appendChild(add);
+      }
       return node;
     }
 
@@ -228,12 +240,24 @@ var Render = (function () {
    *
    * root: 描画先の要素
    * view: { startSerial, dayCount }
-   * showHidden: 非表示の案件も出すか（CLAUDE.md 5.4）
+   * options:
+   *   showHidden     … 非表示の案件も出すか（CLAUDE.md 5.4）
+   *   onOpenProject  … 案件行・バーがクリックされたとき（CLAUDE.md 5.6）
+   *   onAddProject   … 担当者ヘッダの「＋」が押されたとき（CLAUDE.md 5.7）
    * ============================================================ */
-  function draw(root, view, showHidden) {
+  function draw(root, view, options) {
+    var opts = options || {};
+    var showHidden = opts.showHidden === true;
     var days = buildDays(view);
     var viewStartDay = Store.dayIndexFromSerial(view.startSerial);
     var rows = buildRowList(showHidden);
+
+    // 案件行・バーのクリックで編集ポップアップを開く（CLAUDE.md 5.6）
+    function makeClickable(node, project) {
+      if (!opts.onOpenProject) { return; }
+      node.classList.add('is-clickable');
+      node.addEventListener('click', function () { opts.onOpenProject(project.id); });
+    }
 
     root.innerHTML = '';
     root.style.setProperty('--day-count', String(view.dayCount));
@@ -247,7 +271,11 @@ var Render = (function () {
       labelBody.appendChild(el('p', 'placeholder',
         '部署と担当者がまだ登録されていません。右上の［設定］から登録してください。'));
     } else {
-      rows.forEach(function (row) { labelBody.appendChild(buildLabelRow(row)); });
+      rows.forEach(function (row) {
+        var node = buildLabelRow(row, opts);
+        if (row.kind === 'project') { makeClickable(node, row.project); }
+        labelBody.appendChild(node);
+      });
     }
     labels.appendChild(labelBody);
 
@@ -261,7 +289,9 @@ var Render = (function () {
 
     var rowsNode = el('div', 'rows');       // 行とバー（前面）
     rows.forEach(function (row) {
-      rowsNode.appendChild(buildGridRow(row, viewStartDay, view.dayCount));
+      var node = buildGridRow(row, viewStartDay, view.dayCount);
+      if (row.kind === 'project') { makeClickable(node, row.project); }
+      rowsNode.appendChild(node);
     });
     body.appendChild(rowsNode);
 

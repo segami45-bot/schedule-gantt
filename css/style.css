@@ -270,6 +270,132 @@ button.is-on:hover { background: #4a535c; }
 .settings__add-button { flex: 0 0 auto; }
 
 /* ============================================================
+ * 編集ポップアップ（CLAUDE.md 5.6）
+ * ============================================================ */
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.field__label {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-text-sub);
+}
+
+/* ---- 担当者のチェックボックス ---- */
+.assignee__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.assignee__group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.assignee__dept {
+  flex: 0 0 auto;
+  min-width: 5em;
+  font-size: 11px;
+  color: var(--c-text-sub);
+}
+
+.assignee {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.assignee input { cursor: pointer; }
+
+/* ---- バーの行 ---- */
+.barrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px;
+  background: #fafbfc;
+  border: 1px solid var(--c-border);
+  border-radius: 5px;
+}
+
+.barrow__stage,
+.barrow__no {
+  font: inherit;
+  padding: 4px 6px;
+  color: var(--c-text);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border-strong);
+  border-radius: 4px;
+}
+
+.barrow__stage { flex: 0 0 90px; }
+.barrow__no    { flex: 0 0 62px; }
+
+.barrow__date {
+  font: inherit;
+  padding: 3px 6px;
+  color: var(--c-text);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border-strong);
+  border-radius: 4px;
+}
+
+.barrow__date:disabled {
+  color: #a9adb2;
+  background: #f0f1f2;
+}
+
+.barrow__tilde {
+  font-size: 12px;
+  color: var(--c-text-sub);
+}
+
+/* ---- 状態パレット（7色ボタン） ---- */
+.palette {
+  display: flex;
+  gap: 3px;
+}
+
+.palette__button {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.palette__button:hover { border-color: var(--c-border-strong); }
+
+/* 選択中の状態は枠で示す */
+.palette__button.is-selected {
+  border-color: var(--c-text);
+  box-shadow: 0 0 0 1px var(--c-bg) inset;
+}
+
+/* ---- ポップアップ下部のボタン ---- */
+.modal__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--c-border);
+}
+
+.modal__foot-button { flex: 0 0 auto; }
+
+/* ============================================================
  * 状態カラーの凡例（CLAUDE.md 5.1 / 6）
  * 色見本はバーと同じ .bar--◯◯ クラスで着色しています。
  * ============================================================ */
@@ -374,6 +500,13 @@ button.is-on:hover { background: #4a535c; }
 /* 非表示にした案件は半透明で出す（CLAUDE.md 5.4） */
 .row.is-hidden-row { opacity: .45; }
 
+/* 案件行はクリックで編集ポップアップが開く（CLAUDE.md 5.6） */
+.row.is-clickable { cursor: pointer; }
+
+.gantt__label-body .row.is-clickable:hover { background: #eef4fb; }
+
+.rows .row.is-clickable:hover { background: rgba(238, 244, 251, .55); }
+
 /* ---- 部署見出し行 ---- */
 .row--dept {
   background: #eef0f2;
@@ -397,6 +530,25 @@ button.is-on:hover { background: #4a535c; }
 .rows .row--member { background: rgba(250, 251, 252, .7); }
 
 .member__name    { font-weight: 700; }
+
+/* 行末の新規案件追加ボタン（CLAUDE.md 5.4 / 5.7） */
+.member__add {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--c-text-sub);
+  border-radius: 4px;
+}
+
+.member__add:hover {
+  color: var(--c-text);
+  background: #e2e6ea;
+}
+
 .member__count   { color: var(--c-text-sub); font-size: 12px; }
 .member__emoji   { font-size: 14px; }
 .member__comment {
