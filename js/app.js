@@ -1,13 +1,15 @@
 /*
  * app.js — 初期化・イベント結線（CLAUDE.md 7）
  *
- * V1-a時点では期間コントロール（CLAUDE.md 5.2）だけを結線しています。
+ * V1-c時点では期間コントロール（CLAUDE.md 5.2）と
+ * 「非表示を表示」トグル（CLAUDE.md 5.4）を結線しています。
+ * 編集ポップアップ・設定モーダルの結線は V1-d で追加します。
  */
 (function () {
   'use strict';
 
-  var view = null; // { startSerial, dayCount }
-  var el = {};     // よく使うDOM要素の置き場
+  var view = null;         // { startSerial, dayCount, showHidden }
+  var el = {};             // よく使うDOM要素の置き場
 
   /* ------------------------------------------------------------
    * 期間の計算
@@ -18,17 +20,24 @@
     return Store.dayIndexFromSerial(v.startSerial) + v.dayCount - 1;
   }
 
-  // 入力欄に現在の期間を書き戻す
-  function syncInputs() {
+  // 入力欄・ボタンに現在の表示状態を書き戻す
+  function syncControls() {
     el.start.value = Store.ymdTextFromSerial(view.startSerial);
     el.end.value = Store.ymdTextFromDayIndex(endDayIndex(view));
+    el.toggleHidden.setAttribute('aria-pressed', view.showHidden ? 'true' : 'false');
+    el.toggleHidden.classList.toggle('is-on', view.showHidden === true);
   }
 
-  // 期間を確定して保存・再描画する
+  // 表示を描き直す
+  function redraw() {
+    Render.draw(el.gantt, view, view.showHidden);
+  }
+
+  // 表示状態を確定して保存・再描画する
   function applyView(next) {
     view = Store.saveView(next); // 保存時に 1〜120日 へのクランプが掛かる
-    syncInputs();
-    Render.draw(el.gantt, view);
+    syncControls();
+    redraw();
   }
 
   /* ------------------------------------------------------------
@@ -42,7 +51,7 @@
 
     // 入力が空・不正なら現在の表示に戻す
     if (startIdx === null || endIdx === null) {
-      syncInputs();
+      syncControls();
       return;
     }
 
@@ -51,7 +60,8 @@
 
     applyView({
       startSerial: Store.serialFromDayIndex(startIdx, Store.AM),
-      dayCount: dayCount
+      dayCount: dayCount,
+      showHidden: view.showHidden
     });
   }
 
@@ -60,7 +70,17 @@
   function setPreset(backDays, dayCount) {
     applyView({
       startSerial: Store.serialFromDayIndex(Store.todayDayIndex() - backDays, Store.AM),
-      dayCount: dayCount
+      dayCount: dayCount,
+      showHidden: view.showHidden
+    });
+  }
+
+  // 「非表示を表示」トグル（CLAUDE.md 5.4）
+  function toggleHidden() {
+    applyView({
+      startSerial: view.startSerial,
+      dayCount: view.dayCount,
+      showHidden: !view.showHidden
     });
   }
 
@@ -73,18 +93,26 @@
     el.end = document.getElementById('rangeEnd');
     el.btn7 = document.getElementById('range7');
     el.btn30 = document.getElementById('range30');
+    el.toggleHidden = document.getElementById('toggleHidden');
+    el.legend = document.getElementById('legend');
     el.gantt = document.getElementById('gantt');
 
-    // 前回の表示状態を復元する。無ければ「今日の7日前から30日間」
+    // 保存されているデータと表示状態を読み込む
+    Store.loadData();
     view = Store.loadView();
-    syncInputs();
-    Render.draw(el.gantt, view);
+
+    // 凡例は内容が変わらないので最初に一度だけ描く
+    Render.drawLegend(el.legend);
+
+    syncControls();
+    redraw();
 
     el.start.addEventListener('change', onRangeInput);
     el.end.addEventListener('change', onRangeInput);
     // ［7日］: 今日を先頭に7日間 / ［30日］: 今日の7日前から30日間（CLAUDE.md 5.2）
     el.btn7.addEventListener('click', function () { setPreset(0, 7); });
     el.btn30.addEventListener('click', function () { setPreset(Store.DEFAULT_BACK_DAYS, 30); });
+    el.toggleHidden.addEventListener('click', toggleHidden);
   }
 
   if (document.readyState === 'loading') {

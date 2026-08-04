@@ -1,15 +1,54 @@
 /*
  * render.js — グリッド・行・バーの描画（CLAUDE.md 7）
  *
- * V1-a時点では日付ヘッダ（CLAUDE.md 5.3）と列の色分けだけを描きます。
- * 案件行・バーの描画は V1-c で追加します。
+ * 左の行ラベル列と右の日付グリッドは、同じ順番・同じ高さの行を並べることで
+ * 横の位置をそろえています（行の高さは css/style.css で決めています）。
  */
 var Render = (function () {
   'use strict';
 
   var WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
-  // 1日ぶんの列情報をまとめる
+  // 状態（CLAUDE.md 4.3）→ CSSクラス名。色は css/style.css 側で持ちます（CLAUDE.md 6）
+  var STATUS_KEYS = {
+    '未着手': 'todo',
+    'CL確認中': 'review',
+    '制作中': 'wip',
+    '25': 'p25',
+    '50': 'p50',
+    '75': 'p75',
+    '完了': 'done'
+  };
+
+  /*
+   * 画面に出す状態名。
+   * データ上は "25" ですが、表示は CLAUDE.md 3・6 にあわせて "25%" とします。
+   */
+  var STATUS_LABELS = {
+    '25': '25%',
+    '50': '50%',
+    '75': '75%'
+  };
+
+  function statusLabel(status) {
+    return STATUS_LABELS[status] || status;
+  }
+
+  /* ============================================================
+   * 小道具
+   * ============================================================ */
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) { node.className = className; }
+    if (text !== undefined && text !== null) { node.textContent = text; }
+    return node;
+  }
+
+  /* ============================================================
+   * 日付ヘッダと列の色分け（CLAUDE.md 5.3）
+   * ============================================================ */
+
   function dayInfo(dayIndex, todayIdx) {
     var date = Store.dateFromDayIndex(dayIndex);
     var ymd = Store.ymdTextFromDayIndex(dayIndex);
@@ -31,7 +70,6 @@ var Render = (function () {
     };
   }
 
-  // 表示中の全日ぶんの列情報を作る
   function buildDays(view) {
     var startIdx = Store.dayIndexFromSerial(view.startSerial);
     var todayIdx = Store.todayDayIndex();
@@ -42,7 +80,6 @@ var Render = (function () {
     return days;
   }
 
-  // 列に付けるCSSクラスを決める
   // 優先順位: 今日（黄）> 日曜・祝日（赤）> 土曜（水色）
   function cellClass(base, info) {
     var cls = base;
@@ -56,91 +93,209 @@ var Render = (function () {
     return cls;
   }
 
-  // 日付ヘッダ（CLAUDE.md 5.3）
   function buildCalendar(days) {
-    var cal = document.createElement('div');
-    cal.className = 'cal';
-
+    var cal = el('div', 'cal');
     days.forEach(function (info) {
-      var cell = document.createElement('div');
-      cell.className = cellClass('cal__cell', info);
-
-      var date = document.createElement('div');
-      date.className = 'cal__date';
-      date.textContent = info.month + '/' + info.day;
-
-      var dow = document.createElement('div');
-      dow.className = 'cal__dow';
-      dow.textContent = WEEKDAY_LABELS[info.dow];
-
-      cell.appendChild(date);
-      cell.appendChild(dow);
+      var cell = el('div', cellClass('cal__cell', info));
+      cell.appendChild(el('div', 'cal__date', info.month + '/' + info.day));
+      cell.appendChild(el('div', 'cal__dow', WEEKDAY_LABELS[info.dow]));
       cal.appendChild(cell);
     });
-
     return cal;
   }
 
-  // 本体側の列の背景（今日・土日祝の色を列全体に伸ばすための層）
+  // 今日・土日祝の色を列全体に伸ばすための背景層
   function buildStripes(days) {
-    var stripes = document.createElement('div');
-    stripes.className = 'stripes';
-
+    var stripes = el('div', 'stripes');
     days.forEach(function (info) {
-      var cell = document.createElement('div');
-      cell.className = cellClass('stripes__cell', info);
-      stripes.appendChild(cell);
+      stripes.appendChild(el('div', cellClass('stripes__cell', info)));
     });
-
     return stripes;
   }
 
+  /* ============================================================
+   * バー（CLAUDE.md 5.5）
+   * ============================================================ */
+
   /*
-   * 描画本体。
-   * root: 描画先の要素 / view: { startSerial, dayCount }
+   * バーの位置と幅を、表示期間に対する割合（%）で求めます。
+   * 列幅が画面に応じて伸び縮みするため、pxではなく%で置いています。
+   * 表示期間から完全に外れているバーは null を返します。
    */
-  function draw(root, view) {
+  function barGeometry(bar, viewStartDay, dayCount) {
+    var startDay = Store.dayIndexFromSerial(bar.start);
+    var endDay = Store.dayIndexFromSerial(bar.end);
+    var viewEndDay = viewStartDay + dayCount - 1;
+
+    // 表示範囲ではみ出した部分を切り取る
+    var from = Math.max(startDay, viewStartDay);
+    var to = Math.min(endDay, viewEndDay);
+    if (to < from) { return null; }
+
+    return {
+      left: (from - viewStartDay) / dayCount * 100,
+      width: (to - from + 1) / dayCount * 100
+    };
+  }
+
+  function buildBar(bar, viewStartDay, dayCount) {
+    var geo = barGeometry(bar, viewStartDay, dayCount);
+    if (!geo) { return null; }
+
+    var statusKey = STATUS_KEYS[bar.status] || 'todo';
+    // 文字ラベル = 工程 / 背景色 = 状態 の二軸（CLAUDE.md 5.5）
+    var node = el('div', 'bar bar--' + statusKey, Store.barLabel(bar));
+    node.style.left = geo.left + '%';
+    node.style.width = geo.width + '%';
+    return node;
+  }
+
+  /* ============================================================
+   * 行（CLAUDE.md 5.4）
+   *
+   * 左右で同じ行を並べるため、行の作成を1か所にまとめています。
+   * rows には { kind, project } を積み、左右それぞれが同じ順で描きます。
+   * ============================================================ */
+
+  /*
+   * 表示する行の並びを組み立てます。
+   * 部署 > 担当者 > 案件 の3階層。複数担当の案件は各担当者の下に同じ内容で並びます。
+   */
+  function buildRowList(showHidden) {
+    var rows = [];
+    Store.listDepartments().forEach(function (dept) {
+      rows.push({ kind: 'dept', dept: dept });
+      Store.listMembers(dept.id).forEach(function (member) {
+        rows.push({ kind: 'member', member: member });
+        Store.listProjects(member.id, showHidden).forEach(function (project) {
+          rows.push({ kind: 'project', project: project, member: member });
+        });
+      });
+    });
+    return rows;
+  }
+
+  // 行に共通で付けるクラス（hidden の案件は半透明にする / CLAUDE.md 5.4）
+  function rowClass(row) {
+    var cls = 'row row--' + row.kind;
+    if (row.kind === 'project' && row.project.hidden) { cls += ' is-hidden-row'; }
+    return cls;
+  }
+
+  // 左側: 部署名・担当者・案件タイトル
+  function buildLabelRow(row) {
+    var node = el('div', rowClass(row));
+
+    if (row.kind === 'dept') {
+      node.appendChild(el('span', 'dept__name', row.dept.name));
+      return node;
+    }
+
+    if (row.kind === 'member') {
+      var m = row.member;
+      // 名前（countText）emoji comment を横並び（CLAUDE.md 5.4）
+      node.appendChild(el('span', 'member__name', m.name));
+      if (m.countText) { node.appendChild(el('span', 'member__count', '（' + m.countText + '）')); }
+      if (m.emoji) { node.appendChild(el('span', 'member__emoji', m.emoji)); }
+      if (m.comment) { node.appendChild(el('span', 'member__comment', m.comment)); }
+      return node;
+    }
+
+    // 案件行。表示するのはタイトルのみ（内部IDは出さない / CLAUDE.md 4.3）
+    var title = row.project.title || '(無題)';
+    var titleNode = el('span', 'project__title', title);
+    if (!row.project.title) { titleNode.className += ' is-untitled'; }
+    node.appendChild(titleNode);
+    return node;
+  }
+
+  // 右側: 案件行にはバーを置き、部署・担当者の行は空にする
+  function buildGridRow(row, viewStartDay, dayCount) {
+    var node = el('div', rowClass(row));
+    if (row.kind !== 'project') { return node; }
+
+    // 開始日順に描き、重なった部分は後のバーが前面になる（CLAUDE.md 5.5）
+    var bars = row.project.bars.slice().sort(function (a, b) { return a.start - b.start; });
+    bars.forEach(function (bar) {
+      var barNode = buildBar(bar, viewStartDay, dayCount);
+      if (barNode) { node.appendChild(barNode); }
+    });
+    return node;
+  }
+
+  /* ============================================================
+   * 描画本体
+   *
+   * root: 描画先の要素
+   * view: { startSerial, dayCount }
+   * showHidden: 非表示の案件も出すか（CLAUDE.md 5.4）
+   * ============================================================ */
+  function draw(root, view, showHidden) {
     var days = buildDays(view);
+    var viewStartDay = Store.dayIndexFromSerial(view.startSerial);
+    var rows = buildRowList(showHidden);
 
     root.innerHTML = '';
     root.style.setProperty('--day-count', String(view.dayCount));
 
-    // 左: 行ラベル列（案件行は V1-c で入ります）
-    var labels = document.createElement('div');
-    labels.className = 'gantt__labels';
+    /* ---- 左: 行ラベル列 ---- */
+    var labels = el('div', 'gantt__labels');
+    labels.appendChild(el('div', 'gantt__label-head', '担当者 / 案件'));
 
-    var labelHead = document.createElement('div');
-    labelHead.className = 'gantt__label-head';
-    labelHead.textContent = '担当者 / 案件';
-    labels.appendChild(labelHead);
-
-    var labelBody = document.createElement('div');
-    labelBody.className = 'gantt__label-body';
-    // V1-c で案件行に置き換わる仮の案内
-    labelBody.innerHTML = '<p class="placeholder">案件行はV1-cで実装します。</p>';
+    var labelBody = el('div', 'gantt__label-body');
+    if (rows.length === 0) {
+      labelBody.appendChild(el('p', 'placeholder',
+        '部署と担当者がまだ登録されていません。登録画面はV1-dで実装します。'));
+    } else {
+      rows.forEach(function (row) { labelBody.appendChild(buildLabelRow(row)); });
+    }
     labels.appendChild(labelBody);
 
-    // 右: 横スクロールする日付グリッド
-    var scroll = document.createElement('div');
-    scroll.className = 'gantt__scroll';
-
-    var grid = document.createElement('div');
-    grid.className = 'gantt__grid';
+    /* ---- 右: 横スクロールする日付グリッド ---- */
+    var scroll = el('div', 'gantt__scroll');
+    var grid = el('div', 'gantt__grid');
     grid.appendChild(buildCalendar(days));
 
-    var rows = document.createElement('div');
-    rows.className = 'gantt__rows';
-    rows.appendChild(buildStripes(days));
-    grid.appendChild(rows);
+    var body = el('div', 'gantt__rows');
+    body.appendChild(buildStripes(days)); // 列の色（背面）
 
+    var rowsNode = el('div', 'rows');       // 行とバー（前面）
+    rows.forEach(function (row) {
+      rowsNode.appendChild(buildGridRow(row, viewStartDay, view.dayCount));
+    });
+    body.appendChild(rowsNode);
+
+    grid.appendChild(body);
     scroll.appendChild(grid);
 
     root.appendChild(labels);
     root.appendChild(scroll);
   }
 
+  /* ============================================================
+   * 状態カラーの凡例（CLAUDE.md 5.1 / 6）
+   * 状態の一覧は Store から取るため、状態が増減しても自動で追随します。
+   * ============================================================ */
+  function drawLegend(root) {
+    root.innerHTML = '';
+    root.appendChild(el('span', 'legend__title', '状態'));
+
+    Store.STATUSES.forEach(function (status) {
+      var item = el('span', 'legend__item');
+      // 色見本はバーと同じクラスを使うので、色を直せば凡例も一緒に変わります
+      item.appendChild(el('span', 'legend__swatch bar--' + STATUS_KEYS[status]));
+      item.appendChild(el('span', 'legend__label', statusLabel(status)));
+      root.appendChild(item);
+    });
+  }
+
   return {
     draw: draw,
-    buildDays: buildDays
+    drawLegend: drawLegend,
+    buildDays: buildDays,
+    buildRowList: buildRowList,
+    barGeometry: barGeometry,
+    statusLabel: statusLabel,
+    STATUS_KEYS: STATUS_KEYS
   };
 }());

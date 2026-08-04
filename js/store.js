@@ -504,11 +504,12 @@
     return n;
   }
 
-  // 初期表示: 今日の7日前から30日間（CLAUDE.md 5.2）
+  // 初期表示: 今日の7日前から30日間・非表示の案件は出さない（CLAUDE.md 5.2 / 5.4）
   function defaultView() {
     return {
       startSerial: serialFromDayIndex(todayDayIndex() - DEFAULT_BACK_DAYS, AM),
-      dayCount: DEFAULT_DAY_COUNT
+      dayCount: DEFAULT_DAY_COUNT,
+      showHidden: false
     };
   }
 
@@ -518,7 +519,12 @@
     if (!isFinite(startSerial)) { return defaultView(); }
     // 表示開始は必ず「その日の午前」に揃える
     startSerial = serialFromDayIndex(dayIndexFromSerial(startSerial), AM);
-    return { startSerial: startSerial, dayCount: clampDayCount(raw.dayCount) };
+    return {
+      startSerial: startSerial,
+      dayCount: clampDayCount(raw.dayCount),
+      // 古い保存値には showHidden が無いため、その場合は false 扱いにする
+      showHidden: raw.showHidden === true
+    };
   }
 
   function loadView() {

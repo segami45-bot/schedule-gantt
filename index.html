@@ -8,8 +8,9 @@
 </head>
 <body>
 
-<!-- 上部: 期間コントロールバー ＋ 操作ボタン群（CLAUDE.md 5.1） -->
-<header class="toolbar">
+<!-- 上部: 期間コントロールバー ＋ 操作ボタン群 ＋ 状態の凡例（CLAUDE.md 5.1） -->
+<header class="header">
+<div class="toolbar">
   <h1 class="toolbar__title">sgantt</h1>
 
   <!-- 期間コントロール（CLAUDE.md 5.2） -->
@@ -22,7 +23,16 @@
     <button type="button" id="range30">30日</button>
   </div>
 
-  <!-- 操作ボタン群（設定 / 非表示を表示 / 書き出し / 読み込み）は V1-c・V1-d で追加します -->
+  <div class="toolbar__group">
+    <!-- 非表示にした案件を半透明で出すトグル（CLAUDE.md 5.4） -->
+    <button type="button" id="toggleHidden" aria-pressed="false">非表示を表示</button>
+  </div>
+
+  <!-- ［設定］［書き出し］［読み込み］は V1-d で追加します -->
+</div>
+
+<!-- 状態カラーの凡例。中身は render.js が Store.STATUSES から作ります -->
+<div class="legend" id="legend"></div>
 </header>
 
 <!-- 本体: 左に行ラベル列、右に日付グリッド（CLAUDE.md 5.1） -->

@@ -188,6 +188,15 @@ is(Store.normalizeView(null).dayCount, 30, '壊れた値は既定値に戻す');
 is(Store.normalizeView({ startSerial: 'x', dayCount: 10 }).dayCount, 30,
    '開始日が不正なら丸ごと既定値に戻す');
 
+// 「非表示を表示」トグルの状態（CLAUDE.md 5.4）
+is(def.showHidden, false, '初期状態では非表示の案件を出さない');
+is(Store.normalizeView({ startSerial: 0, dayCount: 7, showHidden: true }).showHidden, true,
+   'showHidden が保存・復元できる');
+is(Store.normalizeView({ startSerial: 0, dayCount: 7 }).showHidden, false,
+   'showHidden の無い古い保存値はfalse扱い');
+is(Store.normalizeView({ startSerial: 0, dayCount: 7, showHidden: 'yes' }).showHidden, false,
+   'showHidden が真偽値でなければfalse扱い');
+
 group('localStorageが無い環境での動作');
 ok(Store.loadView().dayCount >= 1, 'loadView が落ちずに値を返す');
 is(Store.saveView({ startSerial: 0, dayCount: 5 }).dayCount, 5, 'saveView が落ちずに値を返す');

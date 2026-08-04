@@ -27,6 +27,22 @@
   --c-off-text: #c0392b;
   --c-sat: #e9f3fb;           /* 土曜 = 水色系うっすら */
   --c-sat-text: #2b6ca3;
+
+  /* 行の高さ（左のラベル列と右のグリッドで同じ値を使い、横の位置をそろえます） */
+  --row-dept: 26px;
+  --row-member: 30px;
+  --row-project: 26px;
+
+  /* ---- 状態カラーパレット（CLAUDE.md 6・仮置き。ここだけ直せば色が変わります） ----
+   * 背景色(bg)と文字色(fg)を対で持ちます。
+   * 濃い色のバーは白文字、淡い色のバーは黒に近い文字にしています。 */
+  --bar-todo-bg:   #e05252;  --bar-todo-fg:   #ffffff;  /* 未着手（赤） */
+  --bar-review-bg: #e8963c;  --bar-review-fg: #3a2408;  /* CL確認中（橙） */
+  --bar-wip-bg:    #4a7fd4;  --bar-wip-fg:    #ffffff;  /* 制作中（青） */
+  --bar-p25-bg:    #b7d98b;  --bar-p25-fg:    #24391a;  /* 25%（薄緑） */
+  --bar-p50-bg:    #82c26e;  --bar-p50-fg:    #1d3316;  /* 50% */
+  --bar-p75-bg:    #4f9e50;  --bar-p75-fg:    #ffffff;  /* 75% */
+  --bar-done-bg:   #9aa0a6;  --bar-done-fg:   #23262a;  /* 完了（グレー） */
 }
 
 /* ============================================================
@@ -50,14 +66,17 @@ body {
 /* ============================================================
  * 上部バー（CLAUDE.md 5.1 / 5.2）
  * ============================================================ */
+.header {
+  background: var(--c-bg-sub);
+  border-bottom: 1px solid var(--c-border-strong);
+}
+
 .toolbar {
   display: flex;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
   padding: 10px 14px;
-  background: var(--c-bg-sub);
-  border-bottom: 1px solid var(--c-border);
 }
 
 .toolbar__title {
@@ -99,6 +118,55 @@ button {
 
 button:hover { background: #eef0f2; }
 
+/* 押した状態を保つトグル（「非表示を表示」） */
+button.is-on {
+  color: #ffffff;
+  background: #5b6570;
+  border-color: #4a535c;
+}
+
+button.is-on:hover { background: #4a535c; }
+
+/* ============================================================
+ * 状態カラーの凡例（CLAUDE.md 5.1 / 6）
+ * 色見本はバーと同じ .bar--◯◯ クラスで着色しています。
+ * ============================================================ */
+.legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--c-border);
+}
+
+.legend__title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--c-text-sub);
+  margin-right: 2px;
+}
+
+.legend__item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* バーと同じ角丸・高さにして、実際のバーと結び付けやすくする */
+.legend__swatch {
+  width: 24px;
+  height: 13px;
+  border-radius: 3px;
+}
+
+.legend__label {
+  font-size: 11px;
+  color: var(--c-text);
+  white-space: nowrap;
+}
+
 /* ============================================================
  * ガント本体（CLAUDE.md 5.1）
  * 左: 行ラベル列 / 右: 横スクロールする日付グリッド
@@ -135,6 +203,75 @@ button:hover { background: #eef0f2; }
   font-size: 12px;
   color: var(--c-text-sub);
 }
+
+/* ============================================================
+ * 行（CLAUDE.md 5.4）
+ * 左のラベル列と右のグリッドで同じクラス・同じ高さの行を並べ、
+ * 横の位置をそろえています。
+ * ============================================================ */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--c-border);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* 右側のグリッドでは左右の余白を付けない（バーの位置がずれるため） */
+.rows .row {
+  padding: 0;
+  overflow: visible;
+}
+
+.row--dept    { height: var(--row-dept); }
+.row--member  { height: var(--row-member); }
+.row--project { height: var(--row-project); }
+
+/* 非表示にした案件は半透明で出す（CLAUDE.md 5.4） */
+.row.is-hidden-row { opacity: .45; }
+
+/* ---- 部署見出し行 ---- */
+.row--dept {
+  background: #eef0f2;
+  border-bottom-color: var(--c-border-strong);
+}
+
+.rows .row--dept {
+  background: rgba(238, 240, 242, .85);
+}
+
+.dept__name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--c-text-sub);
+}
+
+/* ---- 担当者ヘッダ行 ---- */
+.row--member { background: #fafbfc; }
+
+.rows .row--member { background: rgba(250, 251, 252, .7); }
+
+.member__name    { font-weight: 700; }
+.member__count   { color: var(--c-text-sub); font-size: 12px; }
+.member__emoji   { font-size: 14px; }
+.member__comment {
+  color: var(--c-text-sub);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- 案件行 ---- */
+.project__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* タイトル未入力の案件は「(無題)」を薄く出す */
+.project__title.is-untitled { color: #a9adb2; }
 
 /* ---- 右の日付グリッド ---- */
 .gantt__scroll {
@@ -200,6 +337,43 @@ button:hover { background: #eef0f2; }
 .stripes__cell {
   border-right: 1px solid var(--c-border);
 }
+
+/* 行とバーの層。列の色（.stripes）より前面に置きます */
+.rows {
+  position: relative;
+  z-index: 1;
+}
+
+/* ============================================================
+ * バー（CLAUDE.md 5.5）
+ * 文字ラベル = 工程 / 背景色 = 状態 の二軸表現。
+ * 列幅が伸び縮みするため、位置と幅は割合（%）で指定しています。
+ * ============================================================ */
+.rows .row--project { position: relative; }
+
+.bar {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  display: flex;
+  align-items: center;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 3px;
+  /* ラベルがバー幅に収まらない場合ははみ出し表示を許容（CLAUDE.md 5.5） */
+  white-space: nowrap;
+  overflow: visible;
+}
+
+/* 状態7種（CLAUDE.md 6） */
+.bar--todo   { background: var(--bar-todo-bg);   color: var(--bar-todo-fg); }
+.bar--review { background: var(--bar-review-bg); color: var(--bar-review-fg); }
+.bar--wip    { background: var(--bar-wip-bg);    color: var(--bar-wip-fg); }
+.bar--p25    { background: var(--bar-p25-bg);    color: var(--bar-p25-fg); }
+.bar--p50    { background: var(--bar-p50-bg);    color: var(--bar-p50-fg); }
+.bar--p75    { background: var(--bar-p75-bg);    color: var(--bar-p75-fg); }
+.bar--done   { background: var(--bar-done-bg);   color: var(--bar-done-fg); }
 
 /* ============================================================
  * 列の色分け（CLAUDE.md 5.3 ／ 土曜のみ水色に変更）
