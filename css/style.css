@@ -10,8 +10,8 @@
  * 色・サイズの一元管理（CLAUDE.md 6 の方針にならいカスタムプロパティで持つ）
  * ============================================================ */
 :root {
-  --col-width: 42px;          /* 1日ぶんの列幅 */
-  --label-width: 220px;       /* 左の行ラベル列の幅 */
+  --col-width: 42px;          /* 1日ぶんの列幅の下限。画面に余裕があればこれ以上に伸びる */
+  --label-width: 330px;       /* 左の行ラベル列の幅 */
   --cal-height: 44px;         /* 日付ヘッダの高さ */
 
   --c-bg: #ffffff;
@@ -73,17 +73,9 @@ body {
   gap: 6px;
 }
 
-.toolbar__spacer { flex: 1 1 auto; }
-
 .toolbar__label {
   color: var(--c-text-sub);
   font-size: 12px;
-}
-
-.toolbar__summary {
-  color: var(--c-text-sub);
-  font-size: 12px;
-  min-width: 4.5em;
 }
 
 input[type="date"] {
@@ -105,14 +97,7 @@ button {
   cursor: pointer;
 }
 
-button:hover:not(:disabled) { background: #eef0f2; }
-
-button:disabled {
-  color: #a9adb2;
-  background: #f0f1f2;
-  border-color: var(--c-border);
-  cursor: not-allowed;
-}
+button:hover { background: #eef0f2; }
 
 /* ============================================================
  * ガント本体（CLAUDE.md 5.1）
@@ -158,16 +143,18 @@ button:disabled {
   overflow-y: hidden;
 }
 
-/* --day-count は render.js が実際の表示日数をセットします */
+/* --day-count は render.js が実際の表示日数をセットします。
+   画面に収まる日数なら幅いっぱいに広げ、収まらない日数なら
+   --col-width を保って横スクロールさせます（CLAUDE.md 5.3） */
 .gantt__grid {
-  width: calc(var(--col-width) * var(--day-count));
-  min-width: 100%;
+  width: 100%;
+  min-width: calc(var(--col-width) * var(--day-count));
 }
 
 /* ---- 日付ヘッダ（CLAUDE.md 5.3） ---- */
 .cal {
   display: grid;
-  grid-template-columns: repeat(var(--day-count), var(--col-width));
+  grid-template-columns: repeat(var(--day-count), minmax(0, 1fr));
   height: var(--cal-height);
   background: var(--c-bg-sub);
   border-bottom: 1px solid var(--c-border-strong);
@@ -207,7 +194,7 @@ button:disabled {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-columns: repeat(var(--day-count), var(--col-width));
+  grid-template-columns: repeat(var(--day-count), minmax(0, 1fr));
 }
 
 .stripes__cell {

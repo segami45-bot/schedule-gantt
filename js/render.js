@@ -75,14 +75,6 @@ var Render = (function () {
 
       cell.appendChild(date);
       cell.appendChild(dow);
-
-      // 祝日名はマウスを重ねたときだけ出す（列が狭く、常時表示すると読めないため）
-      if (info.holidayName) {
-        cell.title = info.ymd + ' ' + info.holidayName;
-      } else {
-        cell.title = info.ymd;
-      }
-
       cal.appendChild(cell);
     });
 

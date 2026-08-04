@@ -22,7 +22,6 @@
   function syncInputs() {
     el.start.value = Store.ymdTextFromSerial(view.startSerial);
     el.end.value = Store.ymdTextFromDayIndex(endDayIndex(view));
-    el.summary.textContent = view.dayCount + '日間';
   }
 
   // 期間を確定して保存・再描画する
@@ -56,13 +55,11 @@
     });
   }
 
-  // ［7日］［30日］ボタン: 開始日 = 今日の7日前、幅 = 7 / 30（CLAUDE.md 5.2）
-  function setPreset(dayCount) {
+  // 期間をプリセットにそろえる
+  // backDays: 開始日を今日から何日前にするか / dayCount: 表示幅
+  function setPreset(backDays, dayCount) {
     applyView({
-      startSerial: Store.serialFromDayIndex(
-        Store.todayDayIndex() - Store.DEFAULT_BACK_DAYS,
-        Store.AM
-      ),
+      startSerial: Store.serialFromDayIndex(Store.todayDayIndex() - backDays, Store.AM),
       dayCount: dayCount
     });
   }
@@ -76,7 +73,6 @@
     el.end = document.getElementById('rangeEnd');
     el.btn7 = document.getElementById('range7');
     el.btn30 = document.getElementById('range30');
-    el.summary = document.getElementById('rangeSummary');
     el.gantt = document.getElementById('gantt');
 
     // 前回の表示状態を復元する。無ければ「今日の7日前から30日間」
@@ -86,8 +82,9 @@
 
     el.start.addEventListener('change', onRangeInput);
     el.end.addEventListener('change', onRangeInput);
-    el.btn7.addEventListener('click', function () { setPreset(7); });
-    el.btn30.addEventListener('click', function () { setPreset(30); });
+    // ［7日］: 今日を先頭に7日間 / ［30日］: 今日の7日前から30日間（CLAUDE.md 5.2）
+    el.btn7.addEventListener('click', function () { setPreset(0, 7); });
+    el.btn30.addEventListener('click', function () { setPreset(Store.DEFAULT_BACK_DAYS, 30); });
   }
 
   if (document.readyState === 'loading') {
