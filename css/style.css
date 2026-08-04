@@ -1,0 +1,256 @@
+@charset "UTF-8";
+
+/*
+ * style.css — 全体のスタイル
+ * V1-a: 上部の期間コントロールと、日付ヘッダ・列の色分けまで。
+ * 状態カラーパレット（CLAUDE.md 6）はバーを描く V1-c で追加します。
+ */
+
+/* ============================================================
+ * 色・サイズの一元管理（CLAUDE.md 6 の方針にならいカスタムプロパティで持つ）
+ * ============================================================ */
+:root {
+  --col-width: 42px;          /* 1日ぶんの列幅 */
+  --label-width: 220px;       /* 左の行ラベル列の幅 */
+  --cal-height: 44px;         /* 日付ヘッダの高さ */
+
+  --c-bg: #ffffff;
+  --c-bg-sub: #f7f7f8;        /* コントロールバーの背景 */
+  --c-border: #e2e3e5;
+  --c-border-strong: #c8cace;
+  --c-text: #23262a;
+  --c-text-sub: #757b82;
+
+  --c-today: #fff4c2;         /* 今日 = 黄色系（CLAUDE.md 5.3） */
+  --c-today-line: #e8c95a;
+  --c-off: #fdeced;           /* 日曜・祝日 = 赤系うっすら */
+  --c-off-text: #c0392b;
+  --c-sat: #e9f3fb;           /* 土曜 = 水色系うっすら */
+  --c-sat-text: #2b6ca3;
+}
+
+/* ============================================================
+ * 土台
+ * ============================================================ */
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN",
+               "Noto Sans JP", "Meiryo", sans-serif;
+  font-size: 13px;
+  color: var(--c-text);
+  background: var(--c-bg);
+}
+
+/* ============================================================
+ * 上部バー（CLAUDE.md 5.1 / 5.2）
+ * ============================================================ */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--c-bg-sub);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.toolbar__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar__spacer { flex: 1 1 auto; }
+
+.toolbar__label {
+  color: var(--c-text-sub);
+  font-size: 12px;
+}
+
+.toolbar__summary {
+  color: var(--c-text-sub);
+  font-size: 12px;
+  min-width: 4.5em;
+}
+
+input[type="date"] {
+  font: inherit;
+  padding: 4px 6px;
+  color: var(--c-text);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border-strong);
+  border-radius: 4px;
+}
+
+button {
+  font: inherit;
+  padding: 5px 12px;
+  color: var(--c-text);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border-strong);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) { background: #eef0f2; }
+
+button:disabled {
+  color: #a9adb2;
+  background: #f0f1f2;
+  border-color: var(--c-border);
+  cursor: not-allowed;
+}
+
+/* ============================================================
+ * ガント本体（CLAUDE.md 5.1）
+ * 左: 行ラベル列 / 右: 横スクロールする日付グリッド
+ * ============================================================ */
+.gantt {
+  display: flex;
+  align-items: flex-start;
+  border-top: 0;
+}
+
+/* ---- 左の行ラベル列 ---- */
+.gantt__labels {
+  flex: 0 0 var(--label-width);
+  width: var(--label-width);
+  border-right: 1px solid var(--c-border-strong);
+}
+
+.gantt__label-head {
+  height: var(--cal-height);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--c-text-sub);
+  background: var(--c-bg-sub);
+  border-bottom: 1px solid var(--c-border-strong);
+}
+
+.gantt__label-body { min-height: 200px; }
+
+.placeholder {
+  margin: 0;
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--c-text-sub);
+}
+
+/* ---- 右の日付グリッド ---- */
+.gantt__scroll {
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* --day-count は render.js が実際の表示日数をセットします */
+.gantt__grid {
+  width: calc(var(--col-width) * var(--day-count));
+  min-width: 100%;
+}
+
+/* ---- 日付ヘッダ（CLAUDE.md 5.3） ---- */
+.cal {
+  display: grid;
+  grid-template-columns: repeat(var(--day-count), var(--col-width));
+  height: var(--cal-height);
+  background: var(--c-bg-sub);
+  border-bottom: 1px solid var(--c-border-strong);
+}
+
+.cal__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border-right: 1px solid var(--c-border);
+  overflow: hidden;
+}
+
+.cal__date {
+  font-size: 11px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.cal__dow {
+  font-size: 10px;
+  line-height: 1.1;
+  color: var(--c-text-sub);
+}
+
+/* ---- 案件行が入る領域（V1-cで中身が増えます） ---- */
+.gantt__rows {
+  position: relative;
+  min-height: 200px;
+}
+
+/* 今日・土日祝の色を列全体に伸ばすための背景層。
+   案件行はこの上に重ねて描きます。 */
+.stripes {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--day-count), var(--col-width));
+}
+
+.stripes__cell {
+  border-right: 1px solid var(--c-border);
+}
+
+/* ============================================================
+ * 列の色分け（CLAUDE.md 5.3 ／ 土曜のみ水色に変更）
+ * 優先順位: 今日 > 日曜・祝日 > 土曜（render.js 側で制御）
+ * ============================================================ */
+
+/* 日曜・祝日 = 赤系にうっすら */
+.cal__cell.is-off,
+.stripes__cell.is-off {
+  background: var(--c-off);
+}
+
+.cal__cell.is-off .cal__date,
+.cal__cell.is-off .cal__dow {
+  color: var(--c-off-text);
+}
+
+/* 土曜 = 水色系にうっすら */
+.cal__cell.is-sat,
+.stripes__cell.is-sat {
+  background: var(--c-sat);
+}
+
+.cal__cell.is-sat .cal__date,
+.cal__cell.is-sat .cal__dow {
+  color: var(--c-sat-text);
+}
+
+/* 今日 = 黄色系 */
+.cal__cell.is-today,
+.stripes__cell.is-today {
+  background: var(--c-today);
+}
+
+.cal__cell.is-today {
+  border-bottom: 2px solid var(--c-today-line);
+}
+
+.cal__cell.is-today .cal__date {
+  font-weight: 700;
+}

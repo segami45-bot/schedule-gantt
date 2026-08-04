@@ -4,20 +4,44 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>sgantt — スケジュール管理ツール</title>
-<style>
-  /* V0は疎通確認のみ。本番のスタイルはV1-a以降で css/style.css に移す */
-  body {
-    margin: 0;
-    padding: 2rem;
-    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
-    color: #222;
-  }
-  h1 { font-size: 1.5rem; margin: 0 0 .5rem; }
-  p  { margin: 0; color: #666; font-size: .9rem; }
-</style>
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <h1>sgantt</h1>
-  <p>V0: リポジトリ疎通確認用の仮ページです。</p>
+
+<!-- 上部: 期間コントロールバー ＋ 操作ボタン群（CLAUDE.md 5.1） -->
+<header class="toolbar">
+  <h1 class="toolbar__title">sgantt</h1>
+
+  <!-- 期間コントロール（CLAUDE.md 5.2） -->
+  <div class="toolbar__group">
+    <label class="toolbar__label" for="rangeStart">開始</label>
+    <input type="date" id="rangeStart">
+    <label class="toolbar__label" for="rangeEnd">終了</label>
+    <input type="date" id="rangeEnd">
+    <button type="button" id="range7">7日</button>
+    <button type="button" id="range30">30日</button>
+    <span class="toolbar__summary" id="rangeSummary"></span>
+  </div>
+
+  <div class="toolbar__spacer"></div>
+
+  <!-- 操作ボタン群。中身は V1-d で実装するため、今は押せない状態にしています -->
+  <div class="toolbar__group">
+    <button type="button" disabled title="V1-dで実装します">設定</button>
+    <button type="button" disabled title="V1-cで実装します">非表示を表示</button>
+    <button type="button" disabled title="V1-dで実装します">書き出し</button>
+    <button type="button" disabled title="V1-dで実装します">読み込み</button>
+  </div>
+</header>
+
+<!-- 本体: 左に行ラベル列、右に日付グリッド（CLAUDE.md 5.1） -->
+<main class="gantt" id="gantt"></main>
+
+<!-- ES modulesは使わず、順番どおりに読み込みます（CLAUDE.md 2-3） -->
+<script src="js/holidays.js"></script>
+<script src="js/store.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+
 </body>
 </html>
