@@ -245,7 +245,7 @@ var Render = (function () {
     var labelBody = el('div', 'gantt__label-body');
     if (rows.length === 0) {
       labelBody.appendChild(el('p', 'placeholder',
-        '部署と担当者がまだ登録されていません。登録画面はV1-dで実装します。'));
+        '部署と担当者がまだ登録されていません。右上の［設定］から登録してください。'));
     } else {
       rows.forEach(function (row) { labelBody.appendChild(buildLabelRow(row)); });
     }

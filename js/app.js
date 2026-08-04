@@ -85,6 +85,73 @@
   }
 
   /* ------------------------------------------------------------
+   * JSONの書き出し・読み込み（CLAUDE.md 5.9）
+   * ------------------------------------------------------------ */
+
+  // sgantt-backup-YYYYMMDD-HHMM.json としてダウンロードする
+  function exportData() {
+    var blob = new Blob([Store.exportJson()], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = Store.backupFileName();
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // すぐ消すとダウンロードが始まらない場合があるので少し待つ
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  /*
+   * 読み込みの手順（CLAUDE.md 5.9）:
+   *   ファイル選択 → migrate() → 「すべて置き換えます」確認 → 全置換
+   * migrate で問題が見つかった場合はその場で止め、いまのデータは触りません。
+   */
+  function onImportFile(e) {
+    var file = e.target.files && e.target.files[0];
+    // 同じファイルをもう一度選べるように、選択状態は毎回空にする
+    e.target.value = '';
+    if (!file) { return; }
+
+    var reader = new FileReader();
+
+    reader.onerror = function () {
+      window.alert('ファイルを読み取れませんでした。');
+    };
+
+    reader.onload = function () {
+      var migrated;
+      try {
+        migrated = Store.migrate(reader.result);
+      } catch (err) {
+        window.alert('読み込めませんでした。\n\n' + err.message +
+                     '\n\n現在のデータはそのまま残しています。');
+        return;
+      }
+      // migrate が自動修正した内容は、置き換える前に控えておく
+      var notes = Store.notes();
+
+      var summary = '部署' + migrated.departments.length + '件 / 担当者' +
+                    migrated.members.length + '件 / 案件' + migrated.projects.length + '件';
+      if (!window.confirm('現在のデータをすべて置き換えます。よろしいですか？\n\n' +
+                          '読み込むファイルの内容: ' + summary)) {
+        return;
+      }
+
+      Store.setData(migrated);
+      redraw();
+
+      var message = '読み込みました（' + summary + '）。';
+      if (notes.length > 0) {
+        message += '\n\n次の点を自動で調整しました:\n・' + notes.join('\n・');
+      }
+      window.alert(message);
+    };
+
+    reader.readAsText(file);
+  }
+
+  /* ------------------------------------------------------------
    * 起動
    * ------------------------------------------------------------ */
 
@@ -94,12 +161,19 @@
     el.btn7 = document.getElementById('range7');
     el.btn30 = document.getElementById('range30');
     el.toggleHidden = document.getElementById('toggleHidden');
+    el.openSettings = document.getElementById('openSettings');
+    el.exportData = document.getElementById('exportData');
+    el.importData = document.getElementById('importData');
+    el.importFile = document.getElementById('importFile');
     el.legend = document.getElementById('legend');
     el.gantt = document.getElementById('gantt');
 
     // 保存されているデータと表示状態を読み込む
     Store.loadData();
     view = Store.loadView();
+
+    // 設定モーダルからデータが変わったら、ガント本体を描き直す
+    Popup.init({ onChange: redraw });
 
     // 凡例は内容が変わらないので最初に一度だけ描く
     Render.drawLegend(el.legend);
@@ -113,6 +187,11 @@
     el.btn7.addEventListener('click', function () { setPreset(0, 7); });
     el.btn30.addEventListener('click', function () { setPreset(Store.DEFAULT_BACK_DAYS, 30); });
     el.toggleHidden.addEventListener('click', toggleHidden);
+    el.openSettings.addEventListener('click', Popup.openSettings);
+    el.exportData.addEventListener('click', exportData);
+    // ［読み込み］は隠したファイル選択を代わりに押す
+    el.importData.addEventListener('click', function () { el.importFile.click(); });
+    el.importFile.addEventListener('change', onImportFile);
   }
 
   if (document.readyState === 'loading') {
