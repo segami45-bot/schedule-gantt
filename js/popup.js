@@ -34,6 +34,62 @@ var Popup = (function () {
     return node;
   }
 
+  /*
+   * ポップアップを上部の見出し帯でドラッグ移動できるようにする（CLAUDE.md 5.6）。
+   * ボタンなど操作可能な要素の上ではドラッグを始めません。
+   * 画面外へ出ないよう、移動範囲は常に画面内に収まるよう制限します。
+   * 閉じて再度開いたときは中央表示に戻すため、位置は保存しません（呼び出し側で resetDialogPosition を呼ぶ）。
+   */
+  function makeDraggable(target, handle) {
+    var dragging = false;
+    var offsetX = 0;
+    var offsetY = 0;
+
+    function isInteractive(node) {
+      return !!node.closest('button, input, select, textarea, a, label');
+    }
+
+    function onPointerMove(e) {
+      if (!dragging) { return; }
+      var rect = target.getBoundingClientRect();
+      var maxLeft = Math.max(0, window.innerWidth - rect.width);
+      var maxTop = Math.max(0, window.innerHeight - rect.height);
+      var left = Math.min(Math.max(e.clientX - offsetX, 0), maxLeft);
+      var top = Math.min(Math.max(e.clientY - offsetY, 0), maxTop);
+      target.style.left = left + 'px';
+      target.style.top = top + 'px';
+    }
+
+    function onPointerUp() {
+      dragging = false;
+      document.body.classList.remove('is-dragging-modal');
+    }
+
+    handle.addEventListener('mousedown', function (e) {
+      if (isInteractive(e.target)) { return; }
+      var rect = target.getBoundingClientRect();
+      // 現在の見た目の位置に固定してから動かす（中央寄せの margin:auto を解除する）
+      target.style.margin = '0';
+      target.style.left = rect.left + 'px';
+      target.style.top = rect.top + 'px';
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+      dragging = true;
+      document.body.classList.add('is-dragging-modal');
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', onPointerMove);
+    document.addEventListener('mouseup', onPointerUp);
+  }
+
+  // 次に開いたとき中央表示に戻す（CLAUDE.md 5.6: 位置は記憶しない）
+  function resetDialogPosition(target) {
+    target.style.left = '';
+    target.style.top = '';
+    target.style.margin = '';
+  }
+
   // モーダル上部にメッセージを出す（削除できないときの理由など）
   function setMessage(node, text, isError) {
     node.textContent = text;
@@ -564,7 +620,8 @@ var Popup = (function () {
   function buildProjectDialog() {
     projectDialog = el('dialog', 'modal modal--project');
 
-    var head = el('div', 'modal__head');
+    // ドラッグ移動できることが分かるよう専用クラスを付ける（CLAUDE.md 5.6）
+    var head = el('div', 'modal__head modal__head--draggable');
     head.appendChild(el('h2', 'modal__title', '案件の編集'));
 
     // 右上は［案件を削除］（CLAUDE.md 5.6）。確認ダイアログ必須
@@ -583,6 +640,7 @@ var Popup = (function () {
     });
     head.appendChild(removeButton);
     projectDialog.appendChild(head);
+    makeDraggable(projectDialog, head);
 
     pparts.message = el('p', 'modal__message');
     pparts.message.hidden = true;
@@ -669,6 +727,7 @@ var Popup = (function () {
     currentProjectId = projectId;
     hideMessage(pparts.message);
     renderProject();
+    resetDialogPosition(projectDialog); // 前回ドラッグした位置を消し、中央表示に戻す
     projectDialog.showModal();
     pparts.title.focus();
   }

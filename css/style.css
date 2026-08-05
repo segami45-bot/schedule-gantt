@@ -176,6 +176,17 @@ button.is-on:hover { background: #4a535c; }
   letter-spacing: .06em;
 }
 
+/*
+ * 編集ポップアップの見出し帯はドラッグで移動できる（CLAUDE.md 5.6）。
+ * カーソルで示すのはこの帯だけ。設定モーダルは対象外。
+ * ボタンの上だけ通常のカーソルに戻す。
+ */
+.modal__head--draggable { cursor: move; }
+.modal__head--draggable button { cursor: pointer; }
+
+/* ドラッグ中は文字選択が起きないようにする */
+body.is-dragging-modal { user-select: none; }
+
 .modal__message {
   margin: 0;
   padding: 10px 16px;
