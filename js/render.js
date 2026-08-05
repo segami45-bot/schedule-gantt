@@ -157,7 +157,9 @@ var Render = (function () {
       if (bar.clsCheck) { node.className += ' is-cls'; }
     } else {
       // MT・入稿・納品はバーを描かず文字ラベルのみ（CLAUDE.md 5.5）
-      node = el('div', 'bar bar--mark mark--' + MARK_KEYS[bar.stage], Store.barLabel(bar));
+      // 文字色は工程ごとの既定色か白（CLAUDE.md 6.2）
+      var markKey = bar.markColor === 'white' ? 'white' : MARK_KEYS[bar.stage];
+      node = el('div', 'bar bar--mark mark--' + markKey, Store.barLabel(bar));
     }
 
     node.style.left = geo.left + '%';
@@ -229,6 +231,8 @@ var Render = (function () {
     }
 
     // 案件行。表示するのはタイトルのみ（内部IDは出さない / CLAUDE.md 4.3）
+    // タイトルの前に絵文字「📝」を常に付ける（CLAUDE.md 5.4）
+    node.appendChild(el('span', 'project__icon', '📝'));
     var title = row.project.title || '(無題)';
     var titleNode = el('span', 'project__title', title);
     if (!row.project.title) { titleNode.className += ' is-untitled'; }
@@ -352,6 +356,7 @@ var Render = (function () {
     buildRowList: buildRowList,
     barGeometry: barGeometry,
     statusLabel: statusLabel,
-    STATUS_KEYS: STATUS_KEYS
+    STATUS_KEYS: STATUS_KEYS,
+    MARK_KEYS: MARK_KEYS
   };
 }());

@@ -382,6 +382,23 @@ is(Store.findProject(proj.id).bars[1].clsCheck, false, '囲い点線をOFFにで
 Store.updateBar(proj.id, bar.id, { clsCheck: 'yes' });
 is(Store.findProject(proj.id).bars[1].clsCheck, false, '真偽値でない値はOFF扱い');
 
+/* ---- MT・入稿・納品の文字色（CLAUDE.md 6.2） ---- */
+Store.updateBar(proj.id, bar.id, { stage: '入稿', startYmd: '2026-08-12' });
+is(Store.findProject(proj.id).bars[1].markColor, 'default', '新しいバーの文字色は既定色');
+Store.updateBar(proj.id, bar.id, { markColor: 'white' });
+is(Store.findProject(proj.id).bars[1].markColor, 'white', '文字色を白にできる');
+Store.updateBar(proj.id, bar.id, { stage: '納品' });
+is(Store.findProject(proj.id).bars[1].markColor, 'white', '工程を変えても文字色は保たれる');
+Store.updateBar(proj.id, bar.id, { markColor: 'default' });
+is(Store.findProject(proj.id).bars[1].markColor, 'default', '文字色を既定色に戻せる');
+throws(function () { Store.updateBar(proj.id, bar.id, { markColor: '赤' }); },
+       '文字色は', '一覧に無い文字色は拒否');
+
+// 色付きバーに戻しても値は保持される（画面に出ないだけ / CLAUDE.md 4.3）
+Store.updateBar(proj.id, bar.id, { markColor: 'white' });
+Store.updateBar(proj.id, bar.id, { stage: 'ラフ', startYmd: '2026-08-10', endYmd: '2026-08-01' });
+is(Store.findProject(proj.id).bars[1].markColor, 'white', '色付きバーでも文字色の値は保持される');
+
 throws(function () { Store.updateBar(proj.id, bar.id, { stage: '再校' }); }, '工程は', '旧名称「再校」は拒否');
 throws(function () { Store.updateBar(proj.id, bar.id, { status: '完了' }); }, '状態は', '旧名称「完了」は拒否');
 throws(function () { Store.updateBar(proj.id, bar.id, { status: 'CL確認中' }); }, '状態は', '廃止した「CL確認中」は拒否');
@@ -413,7 +430,7 @@ group('JSONの書き出し・読み込み');
 
 var json = Store.exportJson();
 var parsed = JSON.parse(json);
-is(parsed.dataVersion, 2, '書き出したJSONにdataVersionが入る');
+is(parsed.dataVersion, 3, '書き出したJSONにdataVersionが入る');
 is(parsed.departments.length, 1, '部署が書き出される');
 is(parsed.members.length, 1, '担当者が書き出される');
 is(parsed.projects.length, 1, '案件が書き出される');
@@ -441,7 +458,7 @@ var memberId = 'm1';
 
 function sample(overrides) {
   var base = {
-    dataVersion: 2,
+    dataVersion: 3,
     departments: [{ id: deptId, name: '制作', order: 1 }],
     members: [{ id: memberId, deptId: deptId, name: '宮地 太郎', order: 1 }],
     projects: [{
@@ -453,13 +470,21 @@ function sample(overrides) {
 }
 
 var m = Store.migrate(sample());
-is(m.dataVersion, 2, 'dataVersionが2になる');
+is(m.dataVersion, 3, 'dataVersionが3になる');
 is(m.members[0].countText, '', '省略された自由項目は空文字で補われる');
 is(m.members[0].emoji, '', 'emojiも空文字で補われる');
 is(m.projects[0].bars[0].clsCheck, false, '省略された囲い点線はOFFで補われる');
+is(m.projects[0].bars[0].markColor, 'default', '省略された文字色は既定色で補われる');
 
 // dataVersion 省略は現行版として扱う
-is(Store.migrate(sample({ dataVersion: undefined })).dataVersion, 2, 'dataVersion省略は現行版扱い');
+is(Store.migrate(sample({ dataVersion: undefined })).dataVersion, 3, 'dataVersion省略は現行版扱い');
+
+// 一覧に無い文字色は既定色に直す
+is(Store.migrate(sample({
+  projects: [{ id: 'p1', title: 'x', assigneeIds: [memberId], hidden: false, order: 1,
+    bars: [{ id: 'b1', stage: '入稿', stageNo: 1, status: '未着手', markColor: '青',
+             start: 4802, end: 4803 }] }]
+})).projects[0].bars[0].markColor, 'default', '不明な文字色は既定色に直す');
 
 // バーの端の丸め
 var mm = Store.migrate(sample({
@@ -524,7 +549,7 @@ var v1 = Store.migrate(sampleV1([
 ]));
 var v1bars = v1.projects[0].bars;
 
-is(v1.dataVersion, 2, '読み込むとdataVersionが2になる');
+is(v1.dataVersion, 3, '読み込むとdataVersionが3になる');
 is(v1bars[0].stage, '修正', '工程「再校」が「修正」になる');
 is(v1bars[0].stageNo, 3, '再校の番号3が修正3として引き継がれる');
 is(Store.barLabel(v1bars[0]), '修正3', 'ラベルが「修正3」になる');
@@ -547,6 +572,32 @@ is(Store.notes().length, 0, '2度目の読み込みでは自動修正が起き�
 is(Store.migrate(sampleV1([
   { id: 'b1', stage: '納品', stageNo: 1, status: '完了', start: 4802, end: 4803 }
 ])).projects[0].bars[0].status, '校了', '納品の「完了」も「校了」になる');
+
+is(v1bars[0].markColor, 'default', '旧版のバーには既定の文字色が入る');
+
+/* ---- dataVersion 2 → 3（markColor の追加） ---- */
+group('migrate: dataVersion 2 からの変換');
+
+var v2 = Store.migrate({
+  dataVersion: 2,
+  departments: [{ id: deptId, name: '制作', order: 1 }],
+  members: [{ id: memberId, deptId: deptId, name: '宮地 太郎', order: 1 }],
+  projects: [{
+    id: 'p1', title: 'v2の案件', assigneeIds: [memberId], hidden: false, order: 1,
+    bars: [
+      { id: 'b1', stage: '修正', stageNo: 2, status: '制作中', clsCheck: true,
+        start: 4802, end: 4805 },
+      { id: 'b2', stage: '入稿', stageNo: 1, status: '未着手', clsCheck: false,
+        start: 4810, end: 4811 }
+    ]
+  }]
+});
+is(v2.dataVersion, 3, 'dataVersion 2 のデータは3になる');
+is(v2.projects[0].bars[0].markColor, 'default', 'markColorが無ければ既定色が入る');
+is(v2.projects[0].bars[1].markColor, 'default', '入稿にも既定色が入る');
+is(v2.projects[0].bars[0].clsCheck, true, 'v2で付けた囲い点線はそのまま残る');
+is(v2.projects[0].bars[0].stageNo, 2, 'v2の番号もそのまま残る');
+is(Store.notes().length, 0, 'v2→v3では自動修正の通知が出ない');
 
 group('migrate: 拒否する入力');
 

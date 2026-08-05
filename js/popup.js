@@ -453,8 +453,35 @@ var Popup = (function () {
       clsLabel.appendChild(el('span', null, '確認中'));
       row.appendChild(clsLabel);
     } else {
-      // 色を持たない工程では、代わりに文字だけで表示されることを示す
-      row.appendChild(el('span', 'barrow__note', '文字のみ表示・1日'));
+      /*
+       * MT・入稿・納品は文字だけの表示。
+       * 色付きバーに重なったときに読めるよう、既定色と白から選べます（CLAUDE.md 6.2）。
+       */
+      row.appendChild(el('span', 'barrow__note', '文字のみ・1日'));
+
+      var markPalette = el('div', 'palette');
+      [
+        { value: 'default', label: '既定の色', css: 'mark-sw--' + Render.MARK_KEYS[bar.stage] },
+        { value: 'white', label: '白', css: 'mark-sw--white' }
+      ].forEach(function (choice) {
+        var swatch = el('button', 'palette__button ' + choice.css);
+        swatch.type = 'button';
+        swatch.title = choice.label;
+        swatch.setAttribute('aria-label', choice.label);
+        if ((bar.markColor || 'default') === choice.value) { swatch.classList.add('is-selected'); }
+        swatch.addEventListener('click', function () {
+          if (prun(function () {
+            Store.updateBar(currentProjectId, bar.id, { markColor: choice.value });
+          })) {
+            markPalette.querySelectorAll('.palette__button').forEach(function (node) {
+              node.classList.remove('is-selected');
+            });
+            swatch.classList.add('is-selected');
+          }
+        });
+        markPalette.appendChild(swatch);
+      });
+      row.appendChild(markPalette);
     }
 
     // 開始日・終了日（ネイティブのカレンダーピッカーを使う / CLAUDE.md 5.6）

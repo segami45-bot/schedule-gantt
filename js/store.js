@@ -34,7 +34,7 @@
   var DATA_KEY = 'sgantt.data'; // データ本体の保存キー（CLAUDE.md 5.9）
   var VIEW_KEY = 'sgantt.view'; // 表示状態の保存キー（CLAUDE.md 5.9）
 
-  var DATA_VERSION = 2; // 現在のデータ構造の版（CLAUDE.md 4.2）
+  var DATA_VERSION = 3; // 現在のデータ構造の版（CLAUDE.md 4.2）
 
   var MIN_DAY_COUNT = 1;   // 表示幅の下限（CLAUDE.md 5.2）
   var MAX_DAY_COUNT = 120; // 表示幅の上限（CLAUDE.md 5.2）
@@ -59,8 +59,16 @@
   // 状態6種（CLAUDE.md 4.3）
   var STATUSES = ['未着手', '制作中', '校了', '25', '50', '75'];
 
+  /*
+   * MT・入稿・納品の文字色（CLAUDE.md 4.3 / 6.2）。
+   * "default" は工程ごとの既定色（MT・納品=グレー、入稿=赤）、"white" は白。
+   * 色付きバーに重なったときに読めるよう、白を選べるようにしています。
+   */
+  var MARK_COLORS = ['default', 'white'];
+
   var DEFAULT_STAGE = 'ラフ';   // バー追加時の初期値（CLAUDE.md 5.6）
   var DEFAULT_STATUS = '未着手';
+  var DEFAULT_MARK_COLOR = 'default';
 
   // その工程が色付きバーを持つか（＝文字だけの表示ではないか）
   function hasBar(stage) {
@@ -357,6 +365,8 @@
       status: raw.status,
       // 囲い点線＝CL&S確認中（CLAUDE.md 4.3）。省略時はOFF
       clsCheck: raw.clsCheck === true,
+      // MT・入稿・納品の文字色（CLAUDE.md 4.3）。省略時は既定色
+      markColor: MARK_COLORS.indexOf(raw.markColor) >= 0 ? raw.markColor : DEFAULT_MARK_COLOR,
       start: start,
       end: end
     };
@@ -384,8 +394,11 @@
       throw fail('このファイルは新しい版のsgantt（dataVersion ' + version +
                  '）で作られています。読み込めません。');
     }
-    // 版が上がったときは、ここに旧→新の変換を追加していきます。
-    // 1 → 2 の変換（工程・状態の名称変更、CL確認中→囲い点線）は migrateBar で行います。
+    /*
+     * 版が上がったときは、ここに旧→新の変換を追加していきます。
+     *   1 → 2: 工程・状態の名称変更、CL確認中→囲い点線（migrateBar で行う）
+     *   2 → 3: バーに markColor を追加（省略時は既定色になるため、個別の処理は不要）
+     */
 
     if (!Array.isArray(raw.departments) || !Array.isArray(raw.members) ||
         !Array.isArray(raw.projects)) {
@@ -794,6 +807,7 @@
       stageNo: MIN_STAGE_NO,
       status: DEFAULT_STATUS,
       clsCheck: false,
+      markColor: DEFAULT_MARK_COLOR,
       start: range.start,
       end: range.end
     };
@@ -906,6 +920,12 @@
     if (p.clsCheck !== undefined) {
       bar.clsCheck = p.clsCheck === true;
     }
+    if (p.markColor !== undefined) {
+      if (MARK_COLORS.indexOf(p.markColor) < 0) {
+        throw fail('文字色は ' + MARK_COLORS.join(' / ') + ' のいずれかを指定してください。');
+      }
+      bar.markColor = p.markColor;
+    }
 
     // 日付の指定を通算日数にそろえる
     var startDay = dayIndexFromSerial(bar.start);
@@ -1000,8 +1020,10 @@
     MIN_STAGE_NO: MIN_STAGE_NO,
     MAX_STAGE_NO: MAX_STAGE_NO,
     STATUSES: STATUSES,
+    MARK_COLORS: MARK_COLORS,
     DEFAULT_STAGE: DEFAULT_STAGE,
     DEFAULT_STATUS: DEFAULT_STATUS,
+    DEFAULT_MARK_COLOR: DEFAULT_MARK_COLOR,
 
     // 日付
     dateFromDayIndex: dateFromDayIndex,

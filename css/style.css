@@ -38,8 +38,8 @@
    * 濃い色のバーは白文字、淡い色のバーは黒に近い文字にしています。
    * 点線の色は背景色より濃い色です。 */
   --bar-todo-bg: #e05252;  --bar-todo-fg: #ffffff;  --bar-todo-ln: #9e2f2f;  /* 未着手（赤） */
-  --bar-wip-bg:  #4a7fd4;  --bar-wip-fg:  #ffffff;  --bar-wip-ln:  #26518f;  /* 制作中（青） */
-  --bar-ok-bg:   #9aa0a6;  --bar-ok-fg:   #23262a;  --bar-ok-ln:   #5b6167;  /* 校了（グレー） */
+  --bar-wip-bg:  #6b9bdd;  --bar-wip-fg:  #ffffff;  --bar-wip-ln:  #26518f;  /* 制作中（青） */
+  --bar-ok-bg:   #9aa0a6;  --bar-ok-fg:   #ffffff;  --bar-ok-ln:   #5b6167;  /* 校了（グレー） */
   --bar-p25-bg:  #b7d98b;  --bar-p25-fg:  #24391a;  --bar-p25-ln:  #6f9a45;  /* 25%（薄緑） */
   --bar-p50-bg:  #82c26e;  --bar-p50-fg:  #1d3316;  --bar-p50-ln:  #4a8a37;  /* 50% */
   --bar-p75-bg:  #4f9e50;  --bar-p75-fg:  #ffffff;  --bar-p75-ln:  #2c6b2d;  /* 75% */
@@ -51,6 +51,12 @@
   --mark-mt:    #6b7176;  /* MT（グレー） */
   --mark-nohin: #6b7176;  /* 納品（グレー） */
   --mark-nyuko: #c0392b;  /* 入稿（赤） */
+  --mark-white: #ffffff;  /* 白（色付きバーに重なる場合用） */
+
+  /* ---- 行の背景色（CLAUDE.md 6.3） ---- */
+  --row-dept-bg:    #eef0f2;  /* 部署見出し行 */
+  --row-member-bg:  #fafbfc;  /* 担当者ヘッダ行 */
+  --row-project-bg: #f3f5f4;  /* 案件行（行ラベル側） */
 }
 
 /* ============================================================
@@ -411,6 +417,17 @@ button.is-on:hover { background: #4a535c; }
   box-shadow: 0 0 0 1px var(--c-bg) inset;
 }
 
+/* MT・入稿・納品の文字色を選ぶ見本（CLAUDE.md 6.2） */
+.mark-sw--mt    { background: var(--mark-mt); }
+.mark-sw--nohin { background: var(--mark-nohin); }
+.mark-sw--nyuko { background: var(--mark-nyuko); }
+
+/* 白は下地と同じ色なので、選択していないときも枠線で分かるようにする */
+.mark-sw--white {
+  background: var(--mark-white);
+  border-color: var(--c-border-strong);
+}
+
 /* ---- ポップアップ下部のボタン ---- */
 .modal__foot {
   display: flex;
@@ -550,7 +567,7 @@ button.is-on:hover { background: #4a535c; }
 
 /* ---- 部署見出し行 ---- */
 .row--dept {
-  background: #eef0f2;
+  background: var(--row-dept-bg);
   border-bottom-color: var(--c-border-strong);
 }
 
@@ -566,7 +583,7 @@ button.is-on:hover { background: #4a535c; }
 }
 
 /* ---- 担当者ヘッダ行 ---- */
-.row--member { background: #fafbfc; }
+.row--member { background: var(--row-member-bg); }
 
 .rows .row--member { background: rgba(250, 251, 252, .7); }
 
@@ -600,6 +617,16 @@ button.is-on:hover { background: #4a535c; }
 }
 
 /* ---- 案件行 ---- */
+/* 行ラベル側だけ色を敷く。右のグリッド側は列の色を隠さないよう透明のまま */
+.gantt__label-body .row--project { background: var(--row-project-bg); }
+
+/* タイトルの前に置く絵文字（CLAUDE.md 5.4） */
+.project__icon {
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 1;
+}
+
 .project__title {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -727,6 +754,7 @@ button.is-on:hover { background: #4a535c; }
 .mark--mt    { color: var(--mark-mt); }
 .mark--nyuko { color: var(--mark-nyuko); }
 .mark--nohin { color: var(--mark-nohin); }
+.mark--white { color: var(--mark-white); }
 
 /* ============================================================
  * 列の色分け（CLAUDE.md 5.3 ／ 土曜のみ水色に変更）
