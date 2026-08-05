@@ -764,6 +764,10 @@ body.is-dragging-modal { user-select: none; }
 body.is-dragging-bar { user-select: none; cursor: grabbing; }
 body.is-dragging-bar .bar { cursor: grabbing; }
 
+/* 伸縮中（CLAUDE.md 5.10） */
+body.is-resizing-bar { user-select: none; cursor: ew-resize; }
+body.is-resizing-bar .bar { cursor: ew-resize; }
+
 /* 囲い点線 = CL&S確認中（CLAUDE.md 5.5）。色はバーの背景より濃い色 */
 .bar.is-cls {
   border: 2px dashed var(--bar-line);

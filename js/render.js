@@ -178,13 +178,43 @@ var Render = (function () {
   }
 
   /* ============================================================
-   * バーのドラッグ移動（CLAUDE.md 5.10 / ロードマップV2-a）
+   * バーのドラッグ操作（CLAUDE.md 5.10 / ロードマップV2-a・V2-b）
    *
-   * 伸縮（端のドラッグ）はロードマップV2-bで追加します。ここは移動のみ。
+   * バー本体を掴めば移動、色付きバーの左右端を掴めば伸縮します。
    * ============================================================ */
 
   // pointerdown からこの距離以上動いたらドラッグ、未満はクリック（CLAUDE.md 5.10）
   var DRAG_THRESHOLD_PX = 4;
+
+  // 伸縮の掴みしろ（CLAUDE.md 5.10）
+  var HANDLE_PX = 6;        // 通常の掴みしろ幅
+  var HANDLE_NARROW = 24;   // これ未満のバーは掴みしろを 1/4 に縮める
+  var HANDLE_NONE = 12;     // これ未満のバーは掴みしろを置かない（伸縮不可）
+
+  /*
+   * バーの描画幅に応じた掴みしろ幅（px）を返します（CLAUDE.md 5.10 掴みしろの縮退）。
+   * 列幅が狭いときに掴みしろがバー本体を覆い尽くすのを防ぎます。
+   */
+  function handleWidth(barWidthPx) {
+    if (barWidthPx < HANDLE_NONE) { return 0; }
+    if (barWidthPx < HANDLE_NARROW) { return barWidthPx / 4; }
+    return HANDLE_PX;
+  }
+
+  /*
+   * ポインタがバーのどこを掴んだかを返します。
+   *   'start' … 左端（開始日を変える） / 'end' … 右端（終了日を変える） / null … 本体（移動）
+   * 伸縮できるのは色付きバーだけ。MT・入稿・納品は常に1日幅なので移動のみです。
+   */
+  function resizeZone(node, bar, clientX) {
+    if (!Store.hasBar(bar.stage)) { return null; }
+    var rect = node.getBoundingClientRect();
+    var handle = handleWidth(rect.width);
+    if (handle <= 0) { return null; }
+    if (clientX - rect.left <= handle) { return 'start'; }
+    if (rect.right - clientX <= handle) { return 'end'; }
+    return null;
+  }
 
   // draw のたびに更新する、ドラッグ計算に必要な描画条件
   var dragCtx = { viewStartDay: 0, dayCount: 0, onBarChange: null };
@@ -208,6 +238,26 @@ var Render = (function () {
     };
   }
 
+  /*
+   * 掴んだ場所ごとに、動かせる日数の範囲を求めます。
+   *   'move'  … バー全体（移動）
+   *   'start' … 左端。最小幅1日を保つため、終了日を越えては動かせない
+   *   'end'   … 右端。最小幅1日を保つため、開始日より前へは動かせない
+   * どの場合も、表示期間の外へは出せません（CLAUDE.md 5.10）。
+   */
+  function edgeLimits(mode, startDay, endDay, viewStartDay, dayCount) {
+    if (mode === 'start') {
+      var s = dragLimits(startDay, startDay, viewStartDay, dayCount);
+      // 開始と終了が交差する操作は1日幅でクランプ（CLAUDE.md 5.10）
+      return { lower: s.lower, upper: Math.min(s.upper, endDay - startDay) };
+    }
+    if (mode === 'end') {
+      var e = dragLimits(endDay, endDay, viewStartDay, dayCount);
+      return { lower: Math.max(e.lower, startDay - endDay), upper: e.upper };
+    }
+    return dragLimits(startDay, endDay, viewStartDay, dayCount);
+  }
+
   // 1日ぶんの列幅（px）。列は画面に応じて伸縮するので実測する
   function dayWidthPx(node) {
     var row = node.parentNode;
@@ -223,11 +273,19 @@ var Render = (function () {
     node.style.width = geo.width + '%';
   }
 
+  // 掴んだ場所と動かした日数から、仮の開始日・終了日を求める
+  function previewDays(s) {
+    if (s.mode === 'start') { return { start: s.startDay + s.delta, end: s.endDay }; }
+    if (s.mode === 'end') { return { start: s.startDay, end: s.endDay + s.delta }; }
+    return { start: s.startDay + s.delta, end: s.endDay + s.delta };
+  }
+
   function endDrag() {
     if (!dragState) { return; }
     if (dragState.moved) {
       dragState.node.classList.remove('is-dragging');
       document.body.classList.remove('is-dragging-bar');
+      document.body.classList.remove('is-resizing-bar');
     }
     try {
       dragState.node.releasePointerCapture(dragState.pointerId);
@@ -258,7 +316,7 @@ var Render = (function () {
       if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD_PX) { return; }
       s.moved = true;
       s.node.classList.add('is-dragging');
-      document.body.classList.add('is-dragging-bar');
+      document.body.classList.add(s.mode === 'move' ? 'is-dragging-bar' : 'is-resizing-bar');
     }
 
     // 日単位スナップ。行をまたぐ縦移動はしない（CLAUDE.md 5.10）
@@ -268,7 +326,8 @@ var Render = (function () {
 
     if (days !== s.delta) {
       s.delta = days;
-      applyDragVisual(s.node, s.startDay + days, s.endDay + days);
+      var next = previewDays(s);
+      applyDragVisual(s.node, next.start, next.end);
     }
   }
 
@@ -277,6 +336,7 @@ var Render = (function () {
     var s = dragState;
     var moved = s.moved;
     var delta = s.delta;
+    var next = previewDays(s);
     endDrag();
 
     if (!moved) { return; } // クリック扱い。click イベント側でポップアップが開く
@@ -284,15 +344,15 @@ var Render = (function () {
     swallowNextClick = true;
 
     if (delta === 0) {
-      // 位置が変わっていないので保存しない（見た目も元のまま）
+      // 位置も長さも変わっていないので保存しない（見た目も元のまま）
       return;
     }
 
     // pointerup で確定・自動保存（CLAUDE.md 5.10）
     try {
       Store.updateBar(s.projectId, s.bar.id, {
-        startYmd: Store.ymdTextFromDayIndex(s.startDay + delta),
-        endYmd: Store.ymdTextFromDayIndex(s.endDay + delta)
+        startYmd: Store.ymdTextFromDayIndex(next.start),
+        endYmd: Store.ymdTextFromDayIndex(next.end)
       });
     } catch (err) {
       window.alert(err.message);
@@ -308,17 +368,20 @@ var Render = (function () {
       if (e.button !== 0 || dragState) { return; } // 左ボタンのみ
       var startDay = Store.dayIndexFromSerial(bar.start);
       var endDay = Store.dayIndexFromSerial(bar.end);
+      // 左右端を掴んだら伸縮、それ以外は移動（CLAUDE.md 5.10）
+      var mode = resizeZone(node, bar, e.clientX) || 'move';
 
       dragState = {
         node: node,
         bar: bar,
         projectId: project.id,
         pointerId: e.pointerId,
+        mode: mode,
         originX: e.clientX,
         originY: e.clientY,
         startDay: startDay,
         endDay: endDay,
-        limits: dragLimits(startDay, endDay, dragCtx.viewStartDay, dragCtx.dayCount),
+        limits: edgeLimits(mode, startDay, endDay, dragCtx.viewStartDay, dragCtx.dayCount),
         delta: 0,
         moved: false
       };
@@ -329,6 +392,16 @@ var Render = (function () {
       e.preventDefault(); // 文字選択を防ぐ
     });
 
+    // 端に乗せたら左右矢印カーソルにする（CLAUDE.md 5.10）
+    node.addEventListener('pointermove', function (e) {
+      if (dragState) { return; } // ドラッグ中は onDragPointerMove が担当
+      node.style.cursor = resizeZone(node, bar, e.clientX) ? 'ew-resize' : '';
+    });
+
+    node.addEventListener('pointerleave', function () {
+      if (!dragState) { node.style.cursor = ''; }
+    });
+
     node.addEventListener('pointermove', onDragPointerMove);
     node.addEventListener('pointerup', onDragPointerUp);
     node.addEventListener('pointercancel', function () {
@@ -336,6 +409,7 @@ var Render = (function () {
       var s = dragState;
       applyDragVisual(s.node, s.startDay, s.endDay);
       endDrag();
+      node.style.cursor = '';
     });
 
     // ドラッグしたときは、行のクリック（＝ポップアップ）を起こさない
@@ -543,6 +617,8 @@ var Render = (function () {
     barGeometry: barGeometry,
     geometryFromDays: geometryFromDays,
     dragLimits: dragLimits,
+    edgeLimits: edgeLimits,
+    handleWidth: handleWidth,
     statusLabel: statusLabel,
     STATUS_KEYS: STATUS_KEYS,
     MARK_KEYS: MARK_KEYS
