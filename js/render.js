@@ -9,15 +9,21 @@ var Render = (function () {
 
   var WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
-  // 状態（CLAUDE.md 4.3）→ CSSクラス名。色は css/style.css 側で持ちます（CLAUDE.md 6）
+  // 状態（CLAUDE.md 4.3）→ CSSクラス名。色は css/style.css 側で持ちます（CLAUDE.md 6.1）
   var STATUS_KEYS = {
     '未着手': 'todo',
-    'CL確認中': 'review',
     '制作中': 'wip',
+    '校了': 'ok',
     '25': 'p25',
     '50': 'p50',
-    '75': 'p75',
-    '完了': 'done'
+    '75': 'p75'
+  };
+
+  // バーを持たない工程（CLAUDE.md 3）→ CSSクラス名。文字色は工程で固定（CLAUDE.md 6.2）
+  var MARK_KEYS = {
+    'MT': 'mt',
+    '入稿': 'nyuko',
+    '納品': 'nohin'
   };
 
   /*
@@ -142,9 +148,18 @@ var Render = (function () {
     var geo = barGeometry(bar, viewStartDay, dayCount);
     if (!geo) { return null; }
 
-    var statusKey = STATUS_KEYS[bar.status] || 'todo';
-    // 文字ラベル = 工程 / 背景色 = 状態 の二軸（CLAUDE.md 5.5）
-    var node = el('div', 'bar bar--' + statusKey, Store.barLabel(bar));
+    var node;
+    if (Store.hasBar(bar.stage)) {
+      // 文字ラベル = 工程 / 背景色 = 状態 の二軸（CLAUDE.md 5.5）
+      var statusKey = STATUS_KEYS[bar.status] || 'todo';
+      node = el('div', 'bar bar--' + statusKey, Store.barLabel(bar));
+      // 囲い点線 = CL&S確認中（CLAUDE.md 5.5）
+      if (bar.clsCheck) { node.className += ' is-cls'; }
+    } else {
+      // MT・入稿・納品はバーを描かず文字ラベルのみ（CLAUDE.md 5.5）
+      node = el('div', 'bar bar--mark mark--' + MARK_KEYS[bar.stage], Store.barLabel(bar));
+    }
+
     node.style.left = geo.left + '%';
     node.style.width = geo.width + '%';
     return node;
@@ -303,8 +318,9 @@ var Render = (function () {
   }
 
   /* ============================================================
-   * 状態カラーの凡例（CLAUDE.md 5.1 / 6）
+   * 凡例（CLAUDE.md 5.1 / 6）
    * 状態の一覧は Store から取るため、状態が増減しても自動で追随します。
+   * 末尾に囲い点線（CL&S確認中）の見本を並べます。
    * ============================================================ */
   function drawLegend(root) {
     root.innerHTML = '';
@@ -317,6 +333,16 @@ var Render = (function () {
       item.appendChild(el('span', 'legend__label', statusLabel(status)));
       root.appendChild(item);
     });
+
+    /*
+     * 囲い点線の見本（色の軸とは別なので区切りを入れる）。
+     * 実際のバーでは点線の色が状態ごとに変わるため、見本は特定の色に寄せず
+     * 塗りなし・グレーの点線にしています。
+     */
+    var cls = el('span', 'legend__item legend__item--sep');
+    cls.appendChild(el('span', 'legend__swatch legend__swatch--cls'));
+    cls.appendChild(el('span', 'legend__label', 'CL&S確認中'));
+    root.appendChild(cls);
   }
 
   return {

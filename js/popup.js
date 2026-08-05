@@ -376,7 +376,8 @@ var Popup = (function () {
 
   function buildBarRow(bar) {
     var row = el('div', 'barrow');
-    var isOneDay = Store.ONE_DAY_STAGES.indexOf(bar.stage) >= 0;
+    // MT・入稿・納品は色を持たず、常に1日（CLAUDE.md 5.5 / 5.6）
+    var hasBar = Store.hasBar(bar.stage);
 
     // 工程セレクト
     var stage = el('select', 'barrow__stage');
@@ -394,7 +395,7 @@ var Popup = (function () {
     });
     row.appendChild(stage);
 
-    // 番号セレクトは「再校」のときだけ出す（CLAUDE.md 5.6）
+    // 番号セレクトは「修正」のときだけ出す（CLAUDE.md 5.6）
     if (bar.stage === Store.NUMBERED_STAGE) {
       var no = el('select', 'barrow__no');
       for (var i = Store.MIN_STAGE_NO; i <= Store.MAX_STAGE_NO; i++) {
@@ -411,25 +412,50 @@ var Popup = (function () {
       row.appendChild(no);
     }
 
-    // 状態パレット（7色ボタン）
-    var palette = el('div', 'palette');
-    Store.STATUSES.forEach(function (status) {
-      var swatch = el('button', 'palette__button bar--' + Render.STATUS_KEYS[status]);
-      swatch.type = 'button';
-      swatch.title = Render.statusLabel(status);
-      swatch.setAttribute('aria-label', Render.statusLabel(status));
-      if (status === bar.status) { swatch.classList.add('is-selected'); }
-      swatch.addEventListener('click', function () {
-        if (prun(function () { Store.updateBar(currentProjectId, bar.id, { status: status }); })) {
-          palette.querySelectorAll('.palette__button').forEach(function (node) {
-            node.classList.remove('is-selected');
-          });
-          swatch.classList.add('is-selected');
+    /*
+     * 状態パレット（6色ボタン）と囲い点線のチェック。
+     * MT・入稿・納品は色を持たないため、どちらも出しません（値は保持されます）。
+     */
+    if (hasBar) {
+      var palette = el('div', 'palette');
+      Store.STATUSES.forEach(function (status) {
+        var swatch = el('button', 'palette__button bar--' + Render.STATUS_KEYS[status]);
+        swatch.type = 'button';
+        swatch.title = Render.statusLabel(status);
+        swatch.setAttribute('aria-label', Render.statusLabel(status));
+        if (status === bar.status) { swatch.classList.add('is-selected'); }
+        swatch.addEventListener('click', function () {
+          if (prun(function () { Store.updateBar(currentProjectId, bar.id, { status: status }); })) {
+            palette.querySelectorAll('.palette__button').forEach(function (node) {
+              node.classList.remove('is-selected');
+            });
+            swatch.classList.add('is-selected');
+          }
+        });
+        palette.appendChild(swatch);
+      });
+      row.appendChild(palette);
+
+      // 囲い点線 = CL&S確認中（CLAUDE.md 5.6）
+      var clsLabel = el('label', 'barrow__cls');
+      var clsCheck = el('input');
+      clsCheck.type = 'checkbox';
+      clsCheck.checked = bar.clsCheck === true;
+      clsCheck.title = 'クライアントおよび営業の確認待ち';
+      clsCheck.addEventListener('change', function () {
+        if (!prun(function () {
+          Store.updateBar(currentProjectId, bar.id, { clsCheck: clsCheck.checked });
+        })) {
+          clsCheck.checked = !clsCheck.checked;
         }
       });
-      palette.appendChild(swatch);
-    });
-    row.appendChild(palette);
+      clsLabel.appendChild(clsCheck);
+      clsLabel.appendChild(el('span', null, '確認中'));
+      row.appendChild(clsLabel);
+    } else {
+      // 色を持たない工程では、代わりに文字だけで表示されることを示す
+      row.appendChild(el('span', 'barrow__note', '文字のみ表示・1日'));
+    }
 
     // 開始日・終了日（ネイティブのカレンダーピッカーを使う / CLAUDE.md 5.6）
     var startInput = el('input', 'barrow__date');
@@ -439,8 +465,8 @@ var Popup = (function () {
     var endInput = el('input', 'barrow__date');
     endInput.type = 'date';
     endInput.value = Store.ymdTextFromSerial(bar.end);
-    if (isOneDay) {
-      // 入稿・納品は常に1日幅なので終了日は触れないようにする（CLAUDE.md 5.5）
+    if (!hasBar) {
+      // MT・入稿・納品は常に1日なので終了日は触れないようにする（CLAUDE.md 5.5）
       endInput.disabled = true;
       endInput.title = bar.stage + 'は1日だけの予定です';
     }
@@ -513,10 +539,22 @@ var Popup = (function () {
 
     var head = el('div', 'modal__head');
     head.appendChild(el('h2', 'modal__title', '案件の編集'));
-    var close = el('button', 'modal__close', '閉じる');
-    close.type = 'button';
-    close.addEventListener('click', function () { projectDialog.close(); });
-    head.appendChild(close);
+
+    // 右上は［案件を削除］（CLAUDE.md 5.6）。確認ダイアログ必須
+    var removeButton = el('button', 'modal__close settings__delete', '案件を削除');
+    removeButton.type = 'button';
+    removeButton.addEventListener('click', function () {
+      var project = currentProject();
+      if (!project) { return; }
+      var name = project.title || '(無題)';
+      if (!window.confirm('案件「' + name + '」を削除します。元に戻せません。よろしいですか？')) {
+        return;
+      }
+      if (prun(function () { Store.removeProject(currentProjectId); })) {
+        projectDialog.close();
+      }
+    });
+    head.appendChild(removeButton);
     projectDialog.appendChild(head);
 
     pparts.message = el('p', 'modal__message');
@@ -571,21 +609,11 @@ var Popup = (function () {
     });
     foot.appendChild(pparts.hidden);
 
-    var removeButton = el('button', 'modal__foot-button settings__delete', '案件を削除');
-    removeButton.type = 'button';
-    removeButton.addEventListener('click', function () {
-      var project = currentProject();
-      if (!project) { return; }
-      var name = project.title || '(無題)';
-      // 確認ダイアログ必須（CLAUDE.md 5.6）
-      if (!window.confirm('案件「' + name + '」を削除します。元に戻せません。よろしいですか？')) {
-        return;
-      }
-      if (prun(function () { Store.removeProject(currentProjectId); })) {
-        projectDialog.close();
-      }
-    });
-    foot.appendChild(removeButton);
+    // 下部は［閉じる］（CLAUDE.md 5.6）
+    var close = el('button', 'modal__foot-button', '閉じる');
+    close.type = 'button';
+    close.addEventListener('click', function () { projectDialog.close(); });
+    foot.appendChild(close);
 
     body.appendChild(foot);
     projectDialog.appendChild(body);

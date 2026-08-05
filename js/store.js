@@ -34,7 +34,7 @@
   var DATA_KEY = 'sgantt.data'; // データ本体の保存キー（CLAUDE.md 5.9）
   var VIEW_KEY = 'sgantt.view'; // 表示状態の保存キー（CLAUDE.md 5.9）
 
-  var DATA_VERSION = 1; // 現在のデータ構造の版（CLAUDE.md 4.2）
+  var DATA_VERSION = 2; // 現在のデータ構造の版（CLAUDE.md 4.2）
 
   var MIN_DAY_COUNT = 1;   // 表示幅の下限（CLAUDE.md 5.2）
   var MAX_DAY_COUNT = 120; // 表示幅の上限（CLAUDE.md 5.2）
@@ -42,22 +42,30 @@
   var DEFAULT_BACK_DAYS = 7;   // ［30日］の開始日は今日の7日前
   var DEFAULT_DAY_COUNT = 30;  // 初回表示は30日間
 
-  // 工程5種（CLAUDE.md 3）
-  var STAGES = ['ラフ', '初校', '再校', '入稿', '納品'];
+  // 工程6種。選択肢はこの順に並べる（CLAUDE.md 3）
+  var STAGES = ['初校', '修正', 'ラフ', 'MT', '入稿', '納品'];
 
-  // 「入稿」「納品」は日付の性質を持つため常に1日幅（CLAUDE.md 3 / 5.5）
-  var ONE_DAY_STAGES = ['入稿', '納品'];
+  /*
+   * 「MT」「入稿」「納品」は日付の性質を持つ工程。
+   * 常に1日幅で、画面ではバー（背景色）を描かず文字ラベルのみを出す（CLAUDE.md 3 / 5.5）。
+   */
+  var ONE_DAY_STAGES = ['MT', '入稿', '納品'];
 
-  // 番号（1〜20）を持つのは「再校」のときだけ（CLAUDE.md 4.3）
-  var NUMBERED_STAGE = '再校';
+  // 番号（1〜20）を持つのは「修正」のときだけ（CLAUDE.md 4.3）
+  var NUMBERED_STAGE = '修正';
   var MIN_STAGE_NO = 1;
   var MAX_STAGE_NO = 20;
 
-  // 状態7種（CLAUDE.md 4.3）
-  var STATUSES = ['未着手', 'CL確認中', '制作中', '25', '50', '75', '完了'];
+  // 状態6種（CLAUDE.md 4.3）
+  var STATUSES = ['未着手', '制作中', '校了', '25', '50', '75'];
 
   var DEFAULT_STAGE = 'ラフ';   // バー追加時の初期値（CLAUDE.md 5.6）
   var DEFAULT_STATUS = '未着手';
+
+  // その工程が色付きバーを持つか（＝文字だけの表示ではないか）
+  function hasBar(stage) {
+    return ONE_DAY_STAGES.indexOf(stage) < 0;
+  }
 
   /* ============================================================
    * 日付 ⇔ 半日シリアル値
@@ -180,7 +188,7 @@
     return dayIndexFromSerial(bar.end) - dayIndexFromSerial(bar.start) + 1;
   }
 
-  // バーの文字ラベル。再校だけ番号を連結する（CLAUDE.md 5.5）
+  // バーの文字ラベル。修正だけ番号を連結する（CLAUDE.md 5.5）
   function barLabel(bar) {
     return bar.stage === NUMBERED_STAGE ? bar.stage + bar.stageNo : bar.stage;
   }
@@ -258,9 +266,47 @@
     lastNotes.push(text);
   }
 
-  function migrateBar(raw, projectTitle) {
+  /*
+   * dataVersion 1 → 2 の読み替え（CLAUDE.md 11 の v2.0）。
+   *   工程: 「再校」→「修正」
+   *   状態: 「完了」→「校了」／「CL確認中」→「制作中」＋囲い点線ON
+   * 変換したバーは { stage, status, clsCheck } を書き換えた新しいオブジェクトで返します。
+   */
+  var V1_STAGE_RENAME = { '再校': '修正' };
+  var V1_STATUS_RENAME = { '完了': '校了' };
+
+  function upgradeBarFromV1(raw, projectTitle) {
+    var bar = {};
+    var key;
+    for (key in raw) {
+      if (Object.prototype.hasOwnProperty.call(raw, key)) { bar[key] = raw[key]; }
+    }
+
+    if (V1_STAGE_RENAME[bar.stage]) {
+      note('案件「' + projectTitle + '」の工程「' + bar.stage + '」を「' +
+           V1_STAGE_RENAME[bar.stage] + '」に読み替えました。');
+      bar.stage = V1_STAGE_RENAME[bar.stage];
+    }
+    if (V1_STATUS_RENAME[bar.status]) {
+      note('案件「' + projectTitle + '」の状態「' + bar.status + '」を「' +
+           V1_STATUS_RENAME[bar.status] + '」に読み替えました。');
+      bar.status = V1_STATUS_RENAME[bar.status];
+    }
+    // 「CL確認中」は状態から外れ、囲い点線に置き換わった
+    if (bar.status === 'CL確認中') {
+      note('案件「' + projectTitle + '」の状態「CL確認中」を「制作中」＋囲い点線に置き換えました。');
+      bar.status = '制作中';
+      bar.clsCheck = true;
+    }
+    return bar;
+  }
+
+  function migrateBar(raw, projectTitle, fromVersion) {
     if (!isObject(raw)) {
       throw fail('案件「' + projectTitle + '」のバーの形式が正しくありません。');
+    }
+    if (fromVersion < 2) {
+      raw = upgradeBarFromV1(raw, projectTitle);
     }
     if (STAGES.indexOf(raw.stage) < 0) {
       throw fail('案件「' + projectTitle + '」に不明な工程「' + raw.stage + '」があります。');
@@ -288,17 +334,18 @@
       end = start + 1;
       note('案件「' + projectTitle + '」のバーの終了日が開始日より前だったため1日幅にしました。');
     }
-    // 入稿・納品は常に1日幅（CLAUDE.md 5.5）
-    if (ONE_DAY_STAGES.indexOf(raw.stage) >= 0 && end !== start + 1) {
+    // MT・入稿・納品は常に1日幅（CLAUDE.md 5.5）
+    if (!hasBar(raw.stage) && end !== start + 1) {
       end = start + 1;
       note('案件「' + projectTitle + '」の「' + raw.stage + '」を1日幅にそろえました。');
     }
 
-    // 番号は再校のときだけ意味を持つ（CLAUDE.md 4.3）
+    // 番号は修正のときだけ意味を持つ（CLAUDE.md 4.3）
     var stageNo = Math.floor(Number(raw.stageNo));
     if (!isFinite(stageNo) || stageNo < MIN_STAGE_NO || stageNo > MAX_STAGE_NO) {
       if (raw.stage === NUMBERED_STAGE && raw.stageNo !== undefined) {
-        note('案件「' + projectTitle + '」の再校番号が1〜20の外だったため1にしました。');
+        note('案件「' + projectTitle + '」の' + NUMBERED_STAGE +
+             '番号が1〜20の外だったため1にしました。');
       }
       stageNo = MIN_STAGE_NO;
     }
@@ -308,6 +355,8 @@
       stage: raw.stage,
       stageNo: stageNo,
       status: raw.status,
+      // 囲い点線＝CL&S確認中（CLAUDE.md 4.3）。省略時はOFF
+      clsCheck: raw.clsCheck === true,
       start: start,
       end: end
     };
@@ -336,7 +385,7 @@
                  '）で作られています。読み込めません。');
     }
     // 版が上がったときは、ここに旧→新の変換を追加していきます。
-    // 現在は dataVersion 1 のみのため変換処理はありません。
+    // 1 → 2 の変換（工程・状態の名称変更、CL確認中→囲い点線）は migrateBar で行います。
 
     if (!Array.isArray(raw.departments) || !Array.isArray(raw.members) ||
         !Array.isArray(raw.projects)) {
@@ -413,7 +462,7 @@
         assigneeIds: assigneeIds,
         hidden: p.hidden === true,
         order: Math.floor(Number(p.order)) || (i + 1),
-        bars: p.bars.map(function (b) { return migrateBar(b, label); })
+        bars: p.bars.map(function (b) { return migrateBar(b, label, version); })
       };
     });
 
@@ -735,7 +784,7 @@
    * 案件・バーの CRUD（CLAUDE.md 5.5〜5.7）
    * ============================================================ */
 
-  // バー1本を作る。初期値は 工程「ラフ」・状態「未着手」・今日1日（CLAUDE.md 5.6）
+  // バー1本を作る。初期値は 工程「ラフ」・状態「未着手」・囲い点線なし・今日1日（CLAUDE.md 5.6）
   function createBar() {
     var today = todayDayIndex();
     var range = rangeFromDays(today, today);
@@ -744,6 +793,7 @@
       stage: DEFAULT_STAGE,
       stageNo: MIN_STAGE_NO,
       status: DEFAULT_STATUS,
+      clsCheck: false,
       start: range.start,
       end: range.end
     };
@@ -823,9 +873,10 @@
   /*
    * バーを更新する。patch に入れた項目だけが変わります。
    *   stage / stageNo / status  … 一覧にない値は拒否
+   *   clsCheck                  … 囲い点線（CL&S確認中）のON/OFF
    *   startYmd / endYmd         … "YYYY-MM-DD"（画面の日付入力に合わせた形）
    *   start / end               … 半日シリアル値を直接指定する場合
-   * 入稿・納品は指定にかかわらず1日幅にそろえます（CLAUDE.md 5.5）。
+   * MT・入稿・納品は指定にかかわらず1日幅にそろえます（CLAUDE.md 5.5）。
    */
   function updateBar(projectId, barId, patch) {
     var project = needProject(projectId);
@@ -841,7 +892,8 @@
     if (p.stageNo !== undefined) {
       var no = Math.floor(Number(p.stageNo));
       if (!isFinite(no) || no < MIN_STAGE_NO || no > MAX_STAGE_NO) {
-        throw fail('再校の番号は' + MIN_STAGE_NO + '〜' + MAX_STAGE_NO + 'で指定してください。');
+        throw fail(NUMBERED_STAGE + 'の番号は' + MIN_STAGE_NO + '〜' + MAX_STAGE_NO +
+                   'で指定してください。');
       }
       bar.stageNo = no;
     }
@@ -850,6 +902,9 @@
         throw fail('状態は ' + STATUSES.join(' / ') + ' のいずれかを選んでください。');
       }
       bar.status = p.status;
+    }
+    if (p.clsCheck !== undefined) {
+      bar.clsCheck = p.clsCheck === true;
     }
 
     // 日付の指定を通算日数にそろえる
@@ -877,9 +932,9 @@
       dateChanged = true;
     }
 
-    // 工程が入稿・納品に変わった場合も1日幅にそろえ直す
+    // 工程がMT・入稿・納品に変わった場合も1日幅にそろえ直す
     if (dateChanged || p.stage !== undefined) {
-      if (ONE_DAY_STAGES.indexOf(bar.stage) >= 0) {
+      if (!hasBar(bar.stage)) {
         endDay = startDay;
       } else if (endDay < startDay) {
         // 終了日が開始日より前なら1日幅にそろえる
@@ -957,6 +1012,7 @@
     halfFromSerial: halfFromSerial,
     serialFromYmd: serialFromYmd,
     dateFromSerial: dateFromSerial,
+    hasBar: hasBar,
     ymdTextFromDayIndex: ymdTextFromDayIndex,
     ymdTextFromSerial: ymdTextFromSerial,
     dayIndexFromYmdText: dayIndexFromYmdText,

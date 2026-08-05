@@ -321,17 +321,33 @@ var bar = Store.addBar(proj.id);
 is(Store.findProject(proj.id).bars.length, 2, 'バーを追加できる');
 is(bar.stage, 'ラフ', '追加したバーの初期工程はラフ');
 
-Store.updateBar(proj.id, bar.id, { stage: '再校', stageNo: 3, status: '50',
+Store.updateBar(proj.id, bar.id, { stage: '修正', stageNo: 3, status: '50',
                                    startYmd: '2026-07-29', endYmd: '2026-07-30' });
 var updated = Store.findProject(proj.id).bars[1];
 is(updated.start, 4802, '開始日がCLAUDE.md 4.2の例と同じ4802になる');
 is(updated.end, 4805, '終了日がCLAUDE.md 4.2の例と同じ4805になる');
-is(Store.barLabel(updated), '再校3', '再校は番号を連結したラベルになる');
+is(Store.barLabel(updated), '修正3', '修正は番号を連結したラベルになる');
 
 Store.updateBar(proj.id, bar.id, { stage: '初校' });
-is(Store.barLabel(Store.findProject(proj.id).bars[1]), '初校', '再校以外は番号を付けない');
+is(Store.barLabel(Store.findProject(proj.id).bars[1]), '初校', '修正以外は番号を付けない');
 
-// 入稿・納品は常に1日幅（CLAUDE.md 5.5）
+/* ---- 工程の2つの性質（CLAUDE.md 3 / 5.5） ---- */
+group('期間を持つ工程と、日付の性質を持つ工程');
+
+is(Store.hasBar('初校'), true, '初校は色付きバーを持つ');
+is(Store.hasBar('修正'), true, '修正は色付きバーを持つ');
+is(Store.hasBar('ラフ'), true, 'ラフは色付きバーを持つ');
+is(Store.hasBar('MT'), false, 'MTはバーを持たない（文字のみ）');
+is(Store.hasBar('入稿'), false, '入稿はバーを持たない（文字のみ）');
+is(Store.hasBar('納品'), false, '納品はバーを持たない（文字のみ）');
+is(Store.STAGES.length, 6, '工程は6種');
+is(Store.STAGES.join('/'), '初校/修正/ラフ/MT/入稿/納品', '工程の並び順が仕様どおり');
+is(Store.STATUSES.length, 6, '状態は6種');
+is(Store.STATUSES.join('/'), '未着手/制作中/校了/25/50/75', '状態の並び順が仕様どおり');
+
+group('バーの追加・更新・削除（続き）');
+
+// MT・入稿・納品は常に1日幅（CLAUDE.md 5.5）
 Store.updateBar(proj.id, bar.id, { stage: '入稿', startYmd: '2026-08-03', endYmd: '2026-08-20' });
 var nyuko = Store.findProject(proj.id).bars[1];
 is(Store.barDayCount(nyuko), 1, '入稿は期間を指定しても1日幅になる');
@@ -341,6 +357,12 @@ is(Store.ymdTextFromSerial(nyuko.start), '2026-08-03', '入稿の日付は開始
 Store.updateBar(proj.id, bar.id, { stage: '納品', startYmd: '2026-08-25' });
 is(Store.barDayCount(Store.findProject(proj.id).bars[1]), 1, '納品も1日幅');
 
+Store.updateBar(proj.id, bar.id, { stage: 'MT', startYmd: '2026-08-20', endYmd: '2026-08-28' });
+var mt = Store.findProject(proj.id).bars[1];
+is(Store.barDayCount(mt), 1, 'MTも期間を指定しても1日幅になる');
+is(Store.ymdTextFromSerial(mt.start), '2026-08-20', 'MTの日付は開始日が使われる');
+is(Store.barLabel(mt), 'MT', 'MTのラベルはそのまま');
+
 // 期間ものに戻すと複数日にできる
 Store.updateBar(proj.id, bar.id, { stage: 'ラフ', startYmd: '2026-08-03', endYmd: '2026-08-07' });
 is(Store.barDayCount(Store.findProject(proj.id).bars[1]), 5, 'ラフは5日幅にできる');
@@ -349,10 +371,23 @@ is(Store.barDayCount(Store.findProject(proj.id).bars[1]), 5, 'ラフは5日幅�
 Store.updateBar(proj.id, bar.id, { startYmd: '2026-08-10', endYmd: '2026-08-01' });
 is(Store.barDayCount(Store.findProject(proj.id).bars[1]), 1, '逆転した期間は1日幅にそろう');
 
-throws(function () { Store.updateBar(proj.id, bar.id, { stage: '校了' }); }, '工程は', '一覧に無い工程は拒否');
+/* ---- 囲い点線（CL&S確認中 / CLAUDE.md 5.5） ---- */
+is(Store.findProject(proj.id).bars[1].clsCheck, false, '新しいバーの囲い点線は初期OFF');
+Store.updateBar(proj.id, bar.id, { clsCheck: true });
+is(Store.findProject(proj.id).bars[1].clsCheck, true, '囲い点線をONにできる');
+Store.updateBar(proj.id, bar.id, { status: '校了' });
+is(Store.findProject(proj.id).bars[1].clsCheck, true, '状態を変えても囲い点線は保たれる');
+Store.updateBar(proj.id, bar.id, { clsCheck: false });
+is(Store.findProject(proj.id).bars[1].clsCheck, false, '囲い点線をOFFにできる');
+Store.updateBar(proj.id, bar.id, { clsCheck: 'yes' });
+is(Store.findProject(proj.id).bars[1].clsCheck, false, '真偽値でない値はOFF扱い');
+
+throws(function () { Store.updateBar(proj.id, bar.id, { stage: '再校' }); }, '工程は', '旧名称「再校」は拒否');
+throws(function () { Store.updateBar(proj.id, bar.id, { status: '完了' }); }, '状態は', '旧名称「完了」は拒否');
+throws(function () { Store.updateBar(proj.id, bar.id, { status: 'CL確認中' }); }, '状態は', '廃止した「CL確認中」は拒否');
 throws(function () { Store.updateBar(proj.id, bar.id, { status: '進行中' }); }, '状態は', '一覧に無い状態は拒否');
-throws(function () { Store.updateBar(proj.id, bar.id, { stageNo: 0 }); }, '再校の番号', '再校番号0は拒否');
-throws(function () { Store.updateBar(proj.id, bar.id, { stageNo: 21 }); }, '再校の番号', '再校番号21は拒否');
+throws(function () { Store.updateBar(proj.id, bar.id, { stageNo: 0 }); }, '修正の番号', '修正番号0は拒否');
+throws(function () { Store.updateBar(proj.id, bar.id, { stageNo: 21 }); }, '修正の番号', '修正番号21は拒否');
 throws(function () { Store.updateBar(proj.id, bar.id, { startYmd: '2026/08/01' }); }, '開始日の形式', '不正な日付形式は拒否');
 throws(function () { Store.updateBar(proj.id, 'barが無い', {}); }, 'バーが見つかりません', '無いバーの更新は拒否');
 
@@ -378,7 +413,7 @@ group('JSONの書き出し・読み込み');
 
 var json = Store.exportJson();
 var parsed = JSON.parse(json);
-is(parsed.dataVersion, 1, '書き出したJSONにdataVersionが入る');
+is(parsed.dataVersion, 2, '書き出したJSONにdataVersionが入る');
 is(parsed.departments.length, 1, '部署が書き出される');
 is(parsed.members.length, 1, '担当者が書き出される');
 is(parsed.projects.length, 1, '案件が書き出される');
@@ -406,7 +441,7 @@ var memberId = 'm1';
 
 function sample(overrides) {
   var base = {
-    dataVersion: 1,
+    dataVersion: 2,
     departments: [{ id: deptId, name: '制作', order: 1 }],
     members: [{ id: memberId, deptId: deptId, name: '宮地 太郎', order: 1 }],
     projects: [{
@@ -418,12 +453,13 @@ function sample(overrides) {
 }
 
 var m = Store.migrate(sample());
-is(m.dataVersion, 1, 'dataVersionが1になる');
+is(m.dataVersion, 2, 'dataVersionが2になる');
 is(m.members[0].countText, '', '省略された自由項目は空文字で補われる');
 is(m.members[0].emoji, '', 'emojiも空文字で補われる');
+is(m.projects[0].bars[0].clsCheck, false, '省略された囲い点線はOFFで補われる');
 
 // dataVersion 省略は現行版として扱う
-is(Store.migrate(sample({ dataVersion: undefined })).dataVersion, 1, 'dataVersion省略は現行版扱い');
+is(Store.migrate(sample({ dataVersion: undefined })).dataVersion, 2, 'dataVersion省略は現行版扱い');
 
 // バーの端の丸め
 var mm = Store.migrate(sample({
@@ -441,12 +477,19 @@ var m1day = Store.migrate(sample({
 }));
 is(m1day.projects[0].bars[0].end, 4803, '入稿は読み込み時に1日幅へそろえる');
 
-// 再校番号の範囲外
-var mNo = Store.migrate(sample({
-  projects: [{ id: 'p1', title: '再校', assigneeIds: [memberId], hidden: false, order: 1,
-    bars: [{ id: 'b1', stage: '再校', stageNo: 99, status: '50', start: 4802, end: 4805 }] }]
+// MTの1日幅化
+var mMt = Store.migrate(sample({
+  projects: [{ id: 'p1', title: 'MT', assigneeIds: [memberId], hidden: false, order: 1,
+    bars: [{ id: 'b1', stage: 'MT', stageNo: 1, status: '未着手', start: 4802, end: 4821 }] }]
 }));
-is(mNo.projects[0].bars[0].stageNo, 1, '再校番号が範囲外なら1に補正');
+is(mMt.projects[0].bars[0].end, 4803, 'MTも読み込み時に1日幅へそろえる');
+
+// 修正番号の範囲外
+var mNo = Store.migrate(sample({
+  projects: [{ id: 'p1', title: '修正', assigneeIds: [memberId], hidden: false, order: 1,
+    bars: [{ id: 'b1', stage: '修正', stageNo: 99, status: '50', start: 4802, end: 4805 }] }]
+}));
+is(mNo.projects[0].bars[0].stageNo, 1, '修正番号が範囲外なら1に補正');
 
 // hidden 省略
 var mHidden = Store.migrate(sample({
@@ -454,6 +497,56 @@ var mHidden = Store.migrate(sample({
     bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '未着手', start: 4802, end: 4803 }] }]
 }));
 is(mHidden.projects[0].hidden, false, 'hidden省略はfalse扱い');
+
+/* ============================================================
+ * 15-b. dataVersion 1 → 2 の変換（CLAUDE.md 11 の v2.0）
+ * ============================================================ */
+group('migrate: 旧版（dataVersion 1）からの変換');
+
+// 旧版のデータ。工程「再校」、状態「完了」「CL確認中」を含む
+function sampleV1(bars) {
+  return {
+    dataVersion: 1,
+    departments: [{ id: deptId, name: '制作', order: 1 }],
+    members: [{ id: memberId, deptId: deptId, name: '宮地 太郎', order: 1 }],
+    projects: [{
+      id: 'p1', title: '旧データ', assigneeIds: [memberId], hidden: false, order: 1,
+      bars: bars
+    }]
+  };
+}
+
+var v1 = Store.migrate(sampleV1([
+  { id: 'b1', stage: '再校', stageNo: 3, status: '50', start: 4802, end: 4805 },
+  { id: 'b2', stage: 'ラフ', stageNo: 1, status: '完了', start: 4800, end: 4801 },
+  { id: 'b3', stage: '初校', stageNo: 1, status: 'CL確認中', start: 4806, end: 4809 },
+  { id: 'b4', stage: '入稿', stageNo: 1, status: '未着手', start: 4810, end: 4811 }
+]));
+var v1bars = v1.projects[0].bars;
+
+is(v1.dataVersion, 2, '読み込むとdataVersionが2になる');
+is(v1bars[0].stage, '修正', '工程「再校」が「修正」になる');
+is(v1bars[0].stageNo, 3, '再校の番号3が修正3として引き継がれる');
+is(Store.barLabel(v1bars[0]), '修正3', 'ラベルが「修正3」になる');
+is(v1bars[1].status, '校了', '状態「完了」が「校了」になる');
+is(v1bars[2].status, '制作中', '状態「CL確認中」が「制作中」になる');
+is(v1bars[2].clsCheck, true, '「CL確認中」だったバーは囲い点線がONになる');
+is(v1bars[0].clsCheck, false, 'それ以外のバーの囲い点線はOFF');
+is(v1bars[3].stage, '入稿', '入稿はそのまま残る');
+is(v1bars[0].start, 4802, '日付は変換の影響を受けない');
+is(v1bars[0].end, 4805, '終了日も変換の影響を受けない');
+ok(Store.notes().length >= 3, '変換した内容がnotesに残る');
+
+// 変換されたデータをもう一度読み込んでも変わらないこと
+var again = Store.migrate(JSON.stringify(v1));
+is(again.projects[0].bars[0].stage, '修正', '変換後のデータを再度読み込んでも変わらない');
+is(again.projects[0].bars[2].clsCheck, true, '囲い点線も保たれる');
+is(Store.notes().length, 0, '2度目の読み込みでは自動修正が起きない');
+
+// 旧版に無かった MT は、旧データには出てこない
+is(Store.migrate(sampleV1([
+  { id: 'b1', stage: '納品', stageNo: 1, status: '完了', start: 4802, end: 4803 }
+])).projects[0].bars[0].status, '校了', '納品の「完了」も「校了」になる');
 
 group('migrate: 拒否する入力');
 
@@ -477,13 +570,24 @@ throws(function () {
 
 throws(function () {
   Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeIds: [memberId], order: 1,
-    bars: [{ id: 'b1', stage: '校了', stageNo: 1, status: '未着手', start: 4802, end: 4803 }] }] }));
+    bars: [{ id: 'b1', stage: '責了', stageNo: 1, status: '未着手', start: 4802, end: 4803 }] }] }));
 }, '不明な工程', '一覧に無い工程は拒否');
 
 throws(function () {
   Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeIds: [memberId], order: 1,
     bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '進行中', start: 4802, end: 4803 }] }] }));
 }, '不明な状態', '一覧に無い状態は拒否');
+
+// 名称の読み替えは dataVersion 1 のときだけ。2 のデータに旧名称があれば誤りとして拒否する
+throws(function () {
+  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeIds: [memberId], order: 1,
+    bars: [{ id: 'b1', stage: '再校', stageNo: 1, status: '未着手', start: 4802, end: 4803 }] }] }));
+}, '不明な工程', 'dataVersion 2 のデータに「再校」があれば拒否');
+
+throws(function () {
+  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeIds: [memberId], order: 1,
+    bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '完了', start: 4802, end: 4803 }] }] }));
+}, '不明な状態', 'dataVersion 2 のデータに「完了」があれば拒否');
 
 // 読み込みに失敗しても現在のデータが残ること（CLAUDE.md 9.6）
 group('読み込み失敗時に既存データを壊さない');

@@ -33,16 +33,24 @@
   --row-member: 30px;
   --row-project: 26px;
 
-  /* ---- 状態カラーパレット（CLAUDE.md 6・仮置き。ここだけ直せば色が変わります） ----
-   * 背景色(bg)と文字色(fg)を対で持ちます。
-   * 濃い色のバーは白文字、淡い色のバーは黒に近い文字にしています。 */
-  --bar-todo-bg:   #e05252;  --bar-todo-fg:   #ffffff;  /* 未着手（赤） */
-  --bar-review-bg: #e8963c;  --bar-review-fg: #3a2408;  /* CL確認中（橙） */
-  --bar-wip-bg:    #4a7fd4;  --bar-wip-fg:    #ffffff;  /* 制作中（青） */
-  --bar-p25-bg:    #b7d98b;  --bar-p25-fg:    #24391a;  /* 25%（薄緑） */
-  --bar-p50-bg:    #82c26e;  --bar-p50-fg:    #1d3316;  /* 50% */
-  --bar-p75-bg:    #4f9e50;  --bar-p75-fg:    #ffffff;  /* 75% */
-  --bar-done-bg:   #9aa0a6;  --bar-done-fg:   #23262a;  /* 完了（グレー） */
+  /* ---- 状態カラーパレット（CLAUDE.md 6.1・仮置き。ここだけ直せば色が変わります） ----
+   * 背景色(bg)・文字色(fg)・囲い点線の色(ln)を3つ組で持ちます。
+   * 濃い色のバーは白文字、淡い色のバーは黒に近い文字にしています。
+   * 点線の色は背景色より濃い色です。 */
+  --bar-todo-bg: #e05252;  --bar-todo-fg: #ffffff;  --bar-todo-ln: #9e2f2f;  /* 未着手（赤） */
+  --bar-wip-bg:  #4a7fd4;  --bar-wip-fg:  #ffffff;  --bar-wip-ln:  #26518f;  /* 制作中（青） */
+  --bar-ok-bg:   #9aa0a6;  --bar-ok-fg:   #23262a;  --bar-ok-ln:   #5b6167;  /* 校了（グレー） */
+  --bar-p25-bg:  #b7d98b;  --bar-p25-fg:  #24391a;  --bar-p25-ln:  #6f9a45;  /* 25%（薄緑） */
+  --bar-p50-bg:  #82c26e;  --bar-p50-fg:  #1d3316;  --bar-p50-ln:  #4a8a37;  /* 50% */
+  --bar-p75-bg:  #4f9e50;  --bar-p75-fg:  #ffffff;  --bar-p75-ln:  #2c6b2d;  /* 75% */
+
+  /* 凡例に出す囲い点線の見本の色（塗りなし・グレー） */
+  --legend-cls-line: #8a9096;
+
+  /* ---- バーを持たない工程の文字色（CLAUDE.md 6.2） ---- */
+  --mark-mt:    #6b7176;  /* MT（グレー） */
+  --mark-nohin: #6b7176;  /* 納品（グレー） */
+  --mark-nyuko: #c0392b;  /* 入稿（赤） */
 }
 
 /* ============================================================
@@ -360,6 +368,26 @@ button.is-on:hover { background: #4a535c; }
   color: var(--c-text-sub);
 }
 
+/* 囲い点線（CL&S確認中）のチェック */
+.barrow__cls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--c-text-sub);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.barrow__cls input { cursor: pointer; }
+
+/* MT・入稿・納品の行に出す補足 */
+.barrow__note {
+  font-size: 11px;
+  color: var(--c-text-sub);
+  white-space: nowrap;
+}
+
 /* ---- 状態パレット（7色ボタン） ---- */
 .palette {
   display: flex;
@@ -427,6 +455,19 @@ button.is-on:hover { background: #4a535c; }
   width: 24px;
   height: 13px;
   border-radius: 3px;
+  box-sizing: border-box;
+}
+
+/* 囲い点線の見本は、色の軸と別だとわかるよう区切りを入れる */
+.legend__item--sep {
+  padding-left: 14px;
+  border-left: 1px solid var(--c-border-strong);
+}
+
+/* 囲い点線の見本。実際の点線は状態ごとに色が変わるため、見本は塗りなし・グレー */
+.legend__swatch--cls {
+  background: none;
+  border: 2px dashed var(--legend-cls-line);
 }
 
 .legend__label {
@@ -660,14 +701,32 @@ button.is-on:hover { background: #4a535c; }
   overflow: visible;
 }
 
-/* 状態7種（CLAUDE.md 6） */
-.bar--todo   { background: var(--bar-todo-bg);   color: var(--bar-todo-fg); }
-.bar--review { background: var(--bar-review-bg); color: var(--bar-review-fg); }
-.bar--wip    { background: var(--bar-wip-bg);    color: var(--bar-wip-fg); }
-.bar--p25    { background: var(--bar-p25-bg);    color: var(--bar-p25-fg); }
-.bar--p50    { background: var(--bar-p50-bg);    color: var(--bar-p50-fg); }
-.bar--p75    { background: var(--bar-p75-bg);    color: var(--bar-p75-fg); }
-.bar--done   { background: var(--bar-done-bg);   color: var(--bar-done-fg); }
+/* 状態6種（CLAUDE.md 6.1）。--bar-◯◯-ln は囲い点線の色 */
+.bar--todo { background: var(--bar-todo-bg); color: var(--bar-todo-fg); --bar-line: var(--bar-todo-ln); }
+.bar--wip  { background: var(--bar-wip-bg);  color: var(--bar-wip-fg);  --bar-line: var(--bar-wip-ln); }
+.bar--ok   { background: var(--bar-ok-bg);   color: var(--bar-ok-fg);   --bar-line: var(--bar-ok-ln); }
+.bar--p25  { background: var(--bar-p25-bg);  color: var(--bar-p25-fg);  --bar-line: var(--bar-p25-ln); }
+.bar--p50  { background: var(--bar-p50-bg);  color: var(--bar-p50-fg);  --bar-line: var(--bar-p50-ln); }
+.bar--p75  { background: var(--bar-p75-bg);  color: var(--bar-p75-fg);  --bar-line: var(--bar-p75-ln); }
+
+/* 囲い点線 = CL&S確認中（CLAUDE.md 5.5）。色はバーの背景より濃い色 */
+.bar.is-cls {
+  border: 2px dashed var(--bar-line);
+  padding: 0 3px;
+}
+
+/* ---- バーを描かない工程（MT・入稿・納品）の文字表記（CLAUDE.md 5.5 / 6.2） ---- */
+.bar--mark {
+  padding: 0;
+  font-weight: 700;
+  background: none;
+  /* 1日ぶんの幅に収まらないので、列の中央から左右へはみ出させる */
+  justify-content: center;
+}
+
+.mark--mt    { color: var(--mark-mt); }
+.mark--nyuko { color: var(--mark-nyuko); }
+.mark--nohin { color: var(--mark-nohin); }
 
 /* ============================================================
  * 列の色分け（CLAUDE.md 5.3 ／ 土曜のみ水色に変更）
