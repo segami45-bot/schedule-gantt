@@ -15,6 +15,12 @@ var Popup = (function () {
   var pparts = {};          // 編集ポップアップ内のよく使う要素
   var currentProjectId = null;
 
+  /*
+   * 担当者の絵文字（CLAUDE.md 5.8）。自由入力ではなく、この15種から選ぶ。
+   * 並び順はesが決めた並び（あくび→…→にっこり）のまま。
+   */
+  var EMOJI_CHOICES = ['😀', '😁', '😅', '🙂', '😐', '😴', '🫩', '🤢', '😵', '🤠', '😮', '🥹', '😢', '😱', '🥱'];
+
   /* ------------------------------------------------------------
    * 小道具
    * ------------------------------------------------------------ */
@@ -168,6 +174,36 @@ var Popup = (function () {
    * 担当者の一覧（CLAUDE.md 5.8）
    * ------------------------------------------------------------ */
 
+  /*
+   * 絵文字を選ぶセレクト（CLAUDE.md 5.8）。15種＋「（なし）」。
+   * すでに一覧に無い値が入っていた場合（旧データなど）は、勝手に上書きしないよう
+   * その値のための選択肢を先頭に足しておく（ユーザーが選び直すまで元の値のまま）。
+   */
+  function buildEmojiSelect(currentValue) {
+    var select = el('select', 'settings__input settings__input--emoji');
+
+    var none = el('option', null, '（なし）');
+    none.value = '';
+    select.appendChild(none);
+
+    var matched = currentValue === '';
+    EMOJI_CHOICES.forEach(function (emoji) {
+      var option = el('option', null, emoji);
+      option.value = emoji;
+      if (emoji === currentValue) { option.selected = true; matched = true; }
+      select.appendChild(option);
+    });
+
+    if (!matched && currentValue) {
+      var extra = el('option', null, currentValue);
+      extra.value = currentValue;
+      extra.selected = true;
+      select.insertBefore(extra, select.firstChild);
+    }
+
+    return select;
+  }
+
   // 所属部署を選ぶセレクト
   function buildDeptSelect(selectedId) {
     var select = el('select', 'settings__input settings__input--dept');
@@ -215,9 +251,9 @@ var Popup = (function () {
     bind(countInput, 'countText');
     row.appendChild(countInput);
 
-    var emojiInput = input('settings__input settings__input--narrow', member.emoji, '絵文字');
-    bind(emojiInput, 'emoji');
-    row.appendChild(emojiInput);
+    var emojiSelect = buildEmojiSelect(member.emoji);
+    bind(emojiSelect, 'emoji');
+    row.appendChild(emojiSelect);
 
     var commentInput = input('settings__input settings__input--grow', member.comment, '一言コメント');
     bind(commentInput, 'comment');

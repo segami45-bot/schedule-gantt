@@ -270,6 +270,7 @@ body.is-dragging-modal { user-select: none; }
 .settings__input--grow   { flex: 1 1 120px; min-width: 90px; }
 .settings__input--narrow { flex: 0 0 68px; width: 68px; }
 .settings__input--dept   { flex: 0 0 120px; width: 120px; }
+.settings__input--emoji  { flex: 0 0 76px; width: 76px; }
 
 .settings__delete {
   flex: 0 0 auto;
