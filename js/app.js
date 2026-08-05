@@ -35,7 +35,9 @@
       // 案件行・バーのクリックで編集ポップアップ（CLAUDE.md 5.6）
       onOpenProject: Popup.openProject,
       // 担当者ヘッダの「＋」で新規案件（CLAUDE.md 5.7）
-      onAddProject: Popup.addProject
+      onAddProject: Popup.addProject,
+      // バーのドラッグ移動が確定したら描き直す（CLAUDE.md 5.10）
+      onBarChange: redraw
     });
   }
 

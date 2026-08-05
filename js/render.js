@@ -124,13 +124,11 @@ var Render = (function () {
    * ============================================================ */
 
   /*
-   * バーの位置と幅を、表示期間に対する割合（%）で求めます。
+   * 開始日・終了日（通算日数）から、表示期間に対する位置と幅を割合（%）で求めます。
    * 列幅が画面に応じて伸び縮みするため、pxではなく%で置いています。
-   * 表示期間から完全に外れているバーは null を返します。
+   * 表示期間から完全に外れている場合は null を返します。
    */
-  function barGeometry(bar, viewStartDay, dayCount) {
-    var startDay = Store.dayIndexFromSerial(bar.start);
-    var endDay = Store.dayIndexFromSerial(bar.end);
+  function geometryFromDays(startDay, endDay, viewStartDay, dayCount) {
     var viewEndDay = viewStartDay + dayCount - 1;
 
     // 表示範囲ではみ出した部分を切り取る
@@ -144,7 +142,16 @@ var Render = (function () {
     };
   }
 
-  function buildBar(bar, viewStartDay, dayCount) {
+  function barGeometry(bar, viewStartDay, dayCount) {
+    return geometryFromDays(
+      Store.dayIndexFromSerial(bar.start),
+      Store.dayIndexFromSerial(bar.end),
+      viewStartDay,
+      dayCount
+    );
+  }
+
+  function buildBar(bar, viewStartDay, dayCount, project) {
     var geo = barGeometry(bar, viewStartDay, dayCount);
     if (!geo) { return null; }
 
@@ -164,7 +171,180 @@ var Render = (function () {
 
     node.style.left = geo.left + '%';
     node.style.width = geo.width + '%';
+
+    // ドラッグ移動（CLAUDE.md 5.10 / ロードマップV2-a）
+    attachBarDrag(node, bar, project);
     return node;
+  }
+
+  /* ============================================================
+   * バーのドラッグ移動（CLAUDE.md 5.10 / ロードマップV2-a）
+   *
+   * 伸縮（端のドラッグ）はロードマップV2-bで追加します。ここは移動のみ。
+   * ============================================================ */
+
+  // pointerdown からこの距離以上動いたらドラッグ、未満はクリック（CLAUDE.md 5.10）
+  var DRAG_THRESHOLD_PX = 4;
+
+  // draw のたびに更新する、ドラッグ計算に必要な描画条件
+  var dragCtx = { viewStartDay: 0, dayCount: 0, onBarChange: null };
+
+  var dragState = null;      // ドラッグ中だけ値が入る
+  var swallowNextClick = false; // ドラッグ直後のクリックでポップアップを開かないための印
+
+  /*
+   * 動かせる日数の範囲を求めます（CLAUDE.md 5.10「表示期間の外へはドラッグできない」）。
+   *
+   * すでに表示期間からはみ出しているバーを、いきなり期間内へ引き込むと
+   * 「少し動かしたつもりが大きく動いた」ことになるため、はみ出している向きへ
+   * さらに動かすことだけを禁じ、期間内へ戻す向きには動かせるようにしています。
+   * 表示期間より長いバーは動かせません（下限=上限=0）。
+   */
+  function dragLimits(startDay, endDay, viewStartDay, dayCount) {
+    var viewEndDay = viewStartDay + dayCount - 1;
+    return {
+      lower: Math.min(viewStartDay - startDay, 0),
+      upper: Math.max(viewEndDay - endDay, 0)
+    };
+  }
+
+  // 1日ぶんの列幅（px）。列は画面に応じて伸縮するので実測する
+  function dayWidthPx(node) {
+    var row = node.parentNode;
+    if (!row || dragCtx.dayCount <= 0) { return 0; }
+    return row.getBoundingClientRect().width / dragCtx.dayCount;
+  }
+
+  // ドラッグ中の見た目を、仮の位置に合わせて動かす
+  function applyDragVisual(node, startDay, endDay) {
+    var geo = geometryFromDays(startDay, endDay, dragCtx.viewStartDay, dragCtx.dayCount);
+    if (!geo) { return; }
+    node.style.left = geo.left + '%';
+    node.style.width = geo.width + '%';
+  }
+
+  function endDrag() {
+    if (!dragState) { return; }
+    if (dragState.moved) {
+      dragState.node.classList.remove('is-dragging');
+      document.body.classList.remove('is-dragging-bar');
+    }
+    try {
+      dragState.node.releasePointerCapture(dragState.pointerId);
+    } catch (e) { /* すでに解放済みなら何もしない */ }
+    document.removeEventListener('keydown', onDragKeyDown, true);
+    dragState = null;
+  }
+
+  // Escキーで取り消し、元の位置に戻す（CLAUDE.md 5.10）
+  function onDragKeyDown(e) {
+    if (!dragState || e.key !== 'Escape') { return; }
+    var s = dragState;
+    applyDragVisual(s.node, s.startDay, s.endDay);
+    if (s.moved) { swallowNextClick = true; }
+    endDrag();
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onDragPointerMove(e) {
+    if (!dragState) { return; }
+    var s = dragState;
+    var dx = e.clientX - s.originX;
+
+    if (!s.moved) {
+      var dy = e.clientY - s.originY;
+      // 縦揺れも「動いた」に数え、意図しないポップアップ表示を防ぐ
+      if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD_PX) { return; }
+      s.moved = true;
+      s.node.classList.add('is-dragging');
+      document.body.classList.add('is-dragging-bar');
+    }
+
+    // 日単位スナップ。行をまたぐ縦移動はしない（CLAUDE.md 5.10）
+    var width = dayWidthPx(s.node);
+    var days = width > 0 ? Math.round(dx / width) : 0;
+    days = Math.min(Math.max(days, s.limits.lower), s.limits.upper);
+
+    if (days !== s.delta) {
+      s.delta = days;
+      applyDragVisual(s.node, s.startDay + days, s.endDay + days);
+    }
+  }
+
+  function onDragPointerUp() {
+    if (!dragState) { return; }
+    var s = dragState;
+    var moved = s.moved;
+    var delta = s.delta;
+    endDrag();
+
+    if (!moved) { return; } // クリック扱い。click イベント側でポップアップが開く
+
+    swallowNextClick = true;
+
+    if (delta === 0) {
+      // 位置が変わっていないので保存しない（見た目も元のまま）
+      return;
+    }
+
+    // pointerup で確定・自動保存（CLAUDE.md 5.10）
+    try {
+      Store.updateBar(s.projectId, s.bar.id, {
+        startYmd: Store.ymdTextFromDayIndex(s.startDay + delta),
+        endYmd: Store.ymdTextFromDayIndex(s.endDay + delta)
+      });
+    } catch (err) {
+      window.alert(err.message);
+    }
+    // 同じ案件が複数の担当者の下に出ている場合もそろえるため、全体を描き直す
+    if (dragCtx.onBarChange) { dragCtx.onBarChange(); }
+  }
+
+  function attachBarDrag(node, bar, project) {
+    if (!project) { return; }
+
+    node.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0 || dragState) { return; } // 左ボタンのみ
+      var startDay = Store.dayIndexFromSerial(bar.start);
+      var endDay = Store.dayIndexFromSerial(bar.end);
+
+      dragState = {
+        node: node,
+        bar: bar,
+        projectId: project.id,
+        pointerId: e.pointerId,
+        originX: e.clientX,
+        originY: e.clientY,
+        startDay: startDay,
+        endDay: endDay,
+        limits: dragLimits(startDay, endDay, dragCtx.viewStartDay, dragCtx.dayCount),
+        delta: 0,
+        moved: false
+      };
+
+      swallowNextClick = false;
+      node.setPointerCapture(e.pointerId);
+      document.addEventListener('keydown', onDragKeyDown, true);
+      e.preventDefault(); // 文字選択を防ぐ
+    });
+
+    node.addEventListener('pointermove', onDragPointerMove);
+    node.addEventListener('pointerup', onDragPointerUp);
+    node.addEventListener('pointercancel', function () {
+      if (!dragState) { return; }
+      var s = dragState;
+      applyDragVisual(s.node, s.startDay, s.endDay);
+      endDrag();
+    });
+
+    // ドラッグしたときは、行のクリック（＝ポップアップ）を起こさない
+    node.addEventListener('click', function (e) {
+      if (!swallowNextClick) { return; }
+      swallowNextClick = false;
+      e.stopPropagation();
+      e.preventDefault();
+    });
   }
 
   /* ============================================================
@@ -248,7 +428,7 @@ var Render = (function () {
     // 開始日順に描き、重なった部分は後のバーが前面になる（CLAUDE.md 5.5）
     var bars = row.project.bars.slice().sort(function (a, b) { return a.start - b.start; });
     bars.forEach(function (bar) {
-      var barNode = buildBar(bar, viewStartDay, dayCount);
+      var barNode = buildBar(bar, viewStartDay, dayCount, row.project);
       if (barNode) { node.appendChild(barNode); }
     });
     return node;
@@ -263,6 +443,7 @@ var Render = (function () {
    *   showHidden     … 非表示の案件も出すか（CLAUDE.md 5.4）
    *   onOpenProject  … 案件行・バーがクリックされたとき（CLAUDE.md 5.6）
    *   onAddProject   … 担当者ヘッダの「＋」が押されたとき（CLAUDE.md 5.7）
+   *   onBarChange    … バーのドラッグ移動が確定したとき（CLAUDE.md 5.10）
    * ============================================================ */
   function draw(root, view, options) {
     var opts = options || {};
@@ -270,6 +451,11 @@ var Render = (function () {
     var days = buildDays(view);
     var viewStartDay = Store.dayIndexFromSerial(view.startSerial);
     var rows = buildRowList(showHidden);
+
+    // ドラッグ計算に使う描画条件を控えておく（CLAUDE.md 5.10）
+    dragCtx.viewStartDay = viewStartDay;
+    dragCtx.dayCount = view.dayCount;
+    dragCtx.onBarChange = opts.onBarChange || null;
 
     // 案件行・バーのクリックで編集ポップアップを開く（CLAUDE.md 5.6）
     function makeClickable(node, project) {
@@ -355,6 +541,8 @@ var Render = (function () {
     buildDays: buildDays,
     buildRowList: buildRowList,
     barGeometry: barGeometry,
+    geometryFromDays: geometryFromDays,
+    dragLimits: dragLimits,
     statusLabel: statusLabel,
     STATUS_KEYS: STATUS_KEYS,
     MARK_KEYS: MARK_KEYS

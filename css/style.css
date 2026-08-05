@@ -729,6 +729,10 @@ body.is-dragging-modal { user-select: none; }
   position: absolute;
   top: 3px;
   bottom: 3px;
+  /* 掴んで動かせることを示す（CLAUDE.md 5.10 / ロードマップV2-a） */
+  cursor: grab;
+  /* ドラッグ中にブラウザ既定のスクロール・拡大縮小を起こさせない */
+  touch-action: none;
   display: flex;
   align-items: center;
   padding: 0 5px;
@@ -747,6 +751,18 @@ body.is-dragging-modal { user-select: none; }
 .bar--p25  { background: var(--bar-p25-bg);  color: var(--bar-p25-fg);  --bar-line: var(--bar-p25-ln); }
 .bar--p50  { background: var(--bar-p50-bg);  color: var(--bar-p50-fg);  --bar-line: var(--bar-p50-ln); }
 .bar--p75  { background: var(--bar-p75-bg);  color: var(--bar-p75-fg);  --bar-line: var(--bar-p75-ln); }
+
+/* ドラッグ中のバー（CLAUDE.md 5.10） */
+.bar.is-dragging {
+  cursor: grabbing;
+  z-index: 2;
+  opacity: .85;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+}
+
+/* ドラッグ中は文字選択とカーソルのちらつきを止める */
+body.is-dragging-bar { user-select: none; cursor: grabbing; }
+body.is-dragging-bar .bar { cursor: grabbing; }
 
 /* 囲い点線 = CL&S確認中（CLAUDE.md 5.5）。色はバーの背景より濃い色 */
 .bar.is-cls {
