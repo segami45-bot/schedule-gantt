@@ -460,8 +460,15 @@ var Popup = (function () {
 
   /* ---- バー1本ぶんの行（CLAUDE.md 5.6） ---- */
 
-  function buildBarRow(bar) {
+  /*
+   * バー1本ぶんの編集行。案件ポップアップ（5.6）と
+   * 工程バー個別ポップアップ（5.11）の両方で使います。
+   * ctx = { projectId, run } … run(action, rebuild) は各ポップアップの実行ラッパ。
+   */
+  function buildBarRow(bar, ctx) {
     var row = el('div', 'barrow');
+    var projectId = ctx.projectId;
+    var run = ctx.run;
     // MT・入稿・納品は色を持たず、常に1日（CLAUDE.md 5.5 / 5.6）
     var hasBar = Store.hasBar(bar.stage);
 
@@ -475,8 +482,8 @@ var Popup = (function () {
     });
     // 工程が変わると番号セレクトの出し入れや1日幅化が起きるため作り直す
     stage.addEventListener('change', function () {
-      prun(function () {
-        Store.updateBar(currentProjectId, bar.id, { stage: stage.value });
+      run(function () {
+        Store.updateBar(projectId, bar.id, { stage: stage.value });
       }, true);
     });
     row.appendChild(stage);
@@ -491,8 +498,8 @@ var Popup = (function () {
         no.appendChild(opt);
       }
       no.addEventListener('change', function () {
-        prun(function () {
-          Store.updateBar(currentProjectId, bar.id, { stageNo: no.value });
+        run(function () {
+          Store.updateBar(projectId, bar.id, { stageNo: no.value });
         });
       });
       row.appendChild(no);
@@ -511,7 +518,7 @@ var Popup = (function () {
         swatch.setAttribute('aria-label', Render.statusLabel(status));
         if (status === bar.status) { swatch.classList.add('is-selected'); }
         swatch.addEventListener('click', function () {
-          if (prun(function () { Store.updateBar(currentProjectId, bar.id, { status: status }); })) {
+          if (run(function () { Store.updateBar(projectId, bar.id, { status: status }); })) {
             palette.querySelectorAll('.palette__button').forEach(function (node) {
               node.classList.remove('is-selected');
             });
@@ -529,8 +536,8 @@ var Popup = (function () {
       clsCheck.checked = bar.clsCheck === true;
       clsCheck.title = 'クライアントおよび営業の確認待ち';
       clsCheck.addEventListener('change', function () {
-        if (!prun(function () {
-          Store.updateBar(currentProjectId, bar.id, { clsCheck: clsCheck.checked });
+        if (!run(function () {
+          Store.updateBar(projectId, bar.id, { clsCheck: clsCheck.checked });
         })) {
           clsCheck.checked = !clsCheck.checked;
         }
@@ -556,8 +563,8 @@ var Popup = (function () {
         swatch.setAttribute('aria-label', choice.label);
         if ((bar.markColor || 'default') === choice.value) { swatch.classList.add('is-selected'); }
         swatch.addEventListener('click', function () {
-          if (prun(function () {
-            Store.updateBar(currentProjectId, bar.id, { markColor: choice.value });
+          if (run(function () {
+            Store.updateBar(projectId, bar.id, { markColor: choice.value });
           })) {
             markPalette.querySelectorAll('.palette__button').forEach(function (node) {
               node.classList.remove('is-selected');
@@ -587,7 +594,7 @@ var Popup = (function () {
     // 変更後は保存された値を読み直して入力欄に書き戻す（1日幅への補正が入るため）
     function syncDates() {
       var fresh = null;
-      var project = currentProject();
+      var project = Store.findProject(projectId);
       if (project) {
         project.bars.forEach(function (b) { if (b.id === bar.id) { fresh = b; } });
       }
@@ -597,14 +604,14 @@ var Popup = (function () {
     }
 
     startInput.addEventListener('change', function () {
-      prun(function () {
-        Store.updateBar(currentProjectId, bar.id, { startYmd: startInput.value });
+      run(function () {
+        Store.updateBar(projectId, bar.id, { startYmd: startInput.value });
       });
       syncDates();
     });
     endInput.addEventListener('change', function () {
-      prun(function () {
-        Store.updateBar(currentProjectId, bar.id, { endYmd: endInput.value });
+      run(function () {
+        Store.updateBar(projectId, bar.id, { endYmd: endInput.value });
       });
       syncDates();
     });
@@ -617,7 +624,7 @@ var Popup = (function () {
     var del = el('button', 'settings__delete', '削除');
     del.type = 'button';
     del.addEventListener('click', function () {
-      prun(function () { Store.removeBar(currentProjectId, bar.id); }, true);
+      run(function () { Store.removeBar(projectId, bar.id); }, true);
     });
     row.appendChild(del);
 
@@ -639,7 +646,9 @@ var Popup = (function () {
     if (bars.length === 0) {
       pparts.bars.appendChild(el('p', 'settings__empty', 'バーがありません。'));
     } else {
-      bars.forEach(function (bar) { pparts.bars.appendChild(buildBarRow(bar)); });
+      bars.forEach(function (bar) {
+        pparts.bars.appendChild(buildBarRow(bar, { projectId: currentProjectId, run: prun }));
+      });
     }
 
     // 完了・非表示トグルの状態
@@ -741,6 +750,134 @@ var Popup = (function () {
     document.body.appendChild(projectDialog);
   }
 
+  /* ============================================================
+   * 工程バー個別ポップアップ（CLAUDE.md 5.11）
+   *
+   * バーのクリックで、そのバー1本だけを編集する小型ポップアップ。
+   * 中身のバー行は 5.6 と同じ buildBarRow を使い回します。
+   * ============================================================ */
+
+  var barDialog = null;
+  var bparts = {};
+  var currentBar = { projectId: null, barId: null };
+
+  function brun(action, rebuild) {
+    return runOn(action, bparts.message, rebuild ? renderBar : null);
+  }
+
+  function findCurrentBar() {
+    var project = Store.findProject(currentBar.projectId);
+    if (!project) { return null; }
+    var found = null;
+    project.bars.forEach(function (b) { if (b.id === currentBar.barId) { found = b; } });
+    return found;
+  }
+
+  function renderBar() {
+    var bar = findCurrentBar();
+    if (!bar) { barDialog.close(); return; }
+
+    bparts.body.innerHTML = '';
+    bparts.body.appendChild(buildBarRow(bar, { projectId: currentBar.projectId, run: brun }));
+
+    // どの案件のバーかがわかるように案件名を出す
+    var project = Store.findProject(currentBar.projectId);
+    bparts.title.textContent = project ? (project.title || '(無題)') : '';
+  }
+
+  function buildBarDialog() {
+    barDialog = el('dialog', 'modal modal--bar');
+
+    var head = el('div', 'modal__head modal__head--draggable');
+    bparts.title = el('h2', 'modal__title', '');
+    head.appendChild(bparts.title);
+    barDialog.appendChild(head);
+    makeDraggable(barDialog, head);
+
+    bparts.message = el('p', 'modal__message');
+    bparts.message.hidden = true;
+    barDialog.appendChild(bparts.message);
+
+    var body = el('div', 'modal__body');
+    bparts.body = el('div', 'settings__list');
+    body.appendChild(bparts.body);
+
+    /* ---- 下部のボタン（5.6 と同じ並び方） ---- */
+    var foot = el('div', 'modal__foot');
+
+    var toProject = el('button', 'modal__foot-button', '案件全体を編集…');
+    toProject.type = 'button';
+    toProject.addEventListener('click', function () {
+      // 5.11 を閉じ、5.6 を通常どおり中央に表示する（CLAUDE.md 5.11）
+      var projectId = currentBar.projectId;
+      barDialog.close();
+      openProject(projectId);
+    });
+    foot.appendChild(toProject);
+
+    var removeBar = el('button', 'modal__foot-button modal__foot-button--danger', 'このバーを削除');
+    removeBar.type = 'button';
+    removeBar.addEventListener('click', function () {
+      var bar = findCurrentBar();
+      if (!bar) { return; }
+      // 確認ダイアログ必須（CLAUDE.md 5.11）
+      if (!window.confirm('「' + Store.barLabel(bar) + '」のバーを削除します。よろしいですか？')) {
+        return;
+      }
+      if (brun(function () { Store.removeBar(currentBar.projectId, currentBar.barId); })) {
+        barDialog.close();
+      }
+    });
+    foot.appendChild(removeBar);
+
+    var close = el('button', 'modal__foot-button modal__foot-button--close', '閉じる');
+    close.type = 'button';
+    close.addEventListener('click', function () { barDialog.close(); });
+    foot.appendChild(close);
+
+    body.appendChild(foot);
+    barDialog.appendChild(body);
+    document.body.appendChild(barDialog);
+  }
+
+  /*
+   * クリックしたバーの近くに置きます（画面内に収まるよう調整 / CLAUDE.md 5.11）。
+   * anchor はクリックされたバーの要素。
+   */
+  function placeNearBar(anchor) {
+    resetDialogPosition(barDialog);
+    if (!anchor) { return; }
+
+    var rect = barDialog.getBoundingClientRect();
+    var from = anchor.getBoundingClientRect();
+    var gap = 8;
+
+    // まずバーの下、入らなければ上に置く
+    var top = from.bottom + gap;
+    if (top + rect.height > window.innerHeight) { top = from.top - gap - rect.height; }
+    var left = from.left;
+
+    barDialog.style.margin = '0';
+    barDialog.style.left = Math.min(Math.max(left, 0), Math.max(0, window.innerWidth - rect.width)) + 'px';
+    barDialog.style.top = Math.min(Math.max(top, 0), Math.max(0, window.innerHeight - rect.height)) + 'px';
+  }
+
+  // バーのクリックから呼ばれる（CLAUDE.md 5.11）
+  function openBar(projectId, barId, anchor) {
+    var project = Store.findProject(projectId);
+    if (!project) { return; }
+    if (!barDialog) { buildBarDialog(); }
+
+    currentBar = { projectId: projectId, barId: barId };
+    if (!findCurrentBar()) { return; }
+
+    hideMessage(bparts.message);
+    renderBar();
+    resetDialogPosition(barDialog);
+    barDialog.showModal();
+    placeNearBar(anchor);
+  }
+
   /* ------------------------------------------------------------
    * 公開
    * ------------------------------------------------------------ */
@@ -788,6 +925,7 @@ var Popup = (function () {
     init: init,
     openSettings: openSettings,
     openProject: openProject,
+    openBar: openBar,
     addProject: addProject
   };
 }());

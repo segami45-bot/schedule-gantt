@@ -165,10 +165,15 @@ var Render = (function () {
       // 囲い点線 = CL&S確認中（CLAUDE.md 5.5）
       if (bar.clsCheck) { node.className += ' is-cls'; }
     } else {
-      // MT・入稿・納品はバーを描かず文字ラベルのみ（CLAUDE.md 5.5）
-      // 文字色は工程ごとの既定色か白（CLAUDE.md 6.2）
+      /*
+       * 文字ラベル工程はバーを描かず文字ラベルのみ（CLAUDE.md 5.5）。
+       * 文字色は工程ごとの既定色か白（CLAUDE.md 6.2）。
+       * 文字は1日ぶんの幅からはみ出すため、ラベルの矩形を掴めるよう
+       * 内側の要素だけがポインタを受け取るようにしています（CLAUDE.md 5.11）。
+       */
       var markKey = bar.markColor === 'white' ? 'white' : MARK_KEYS[bar.stage];
-      node = el('div', 'bar bar--mark mark--' + markKey, Store.barLabel(bar));
+      node = el('div', 'bar bar--mark mark--' + markKey);
+      node.appendChild(el('span', 'bar__hit', Store.barLabel(bar)));
     }
 
     node.style.left = geo.left + '%';
@@ -219,7 +224,7 @@ var Render = (function () {
   }
 
   // draw のたびに更新する、ドラッグ計算に必要な描画条件
-  var dragCtx = { viewStartDay: 0, dayCount: 0, onBarChange: null };
+  var dragCtx = { viewStartDay: 0, dayCount: 0, onBarChange: null, onOpenBar: null };
 
   var dragState = null;      // ドラッグ中だけ値が入る
   var swallowNextClick = false; // ドラッグ直後のクリックでポップアップを開かないための印
@@ -414,12 +419,18 @@ var Render = (function () {
       node.style.cursor = '';
     });
 
-    // ドラッグしたときは、行のクリック（＝ポップアップ）を起こさない
+    /*
+     * バーのクリックは工程バー個別ポップアップを開く（CLAUDE.md 5.11）。
+     * ドラッグしたときは開かない。行のクリック（＝案件ポップアップ）にも伝えない。
+     */
     node.addEventListener('click', function (e) {
-      if (!swallowNextClick) { return; }
-      swallowNextClick = false;
-      e.stopPropagation();
-      e.preventDefault();
+      e.stopPropagation(); // 行のクリックは起こさない（CLAUDE.md 5.11）
+      if (swallowNextClick) {
+        swallowNextClick = false;
+        e.preventDefault();
+        return;
+      }
+      if (dragCtx.onOpenBar) { dragCtx.onOpenBar(project.id, bar.id, node); }
     });
   }
 
@@ -613,6 +624,8 @@ var Render = (function () {
     dragCtx.viewStartDay = viewStartDay;
     dragCtx.dayCount = view.dayCount;
     dragCtx.onBarChange = opts.onBarChange || null;
+    // バーのクリックは工程バー個別ポップアップへ（CLAUDE.md 5.11）
+    dragCtx.onOpenBar = opts.onOpenBar || null;
 
     // 案件行・バーのクリックで編集ポップアップを開く（CLAUDE.md 5.6）
     function makeClickable(node, project) {

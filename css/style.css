@@ -165,6 +165,15 @@ button.is-on:hover { background: #4a535c; }
 
 .modal::backdrop { background: rgba(0, 0, 0, .35); }
 
+/*
+ * 工程バー個別ポップアップ（CLAUDE.md 5.11）。
+ * バー1本ぶんだけなので、案件ポップアップより小ぶりにします。
+ * クリックしたバーの近くに置くため、位置は popup.js が指定します。
+ */
+.modal--bar { width: min(680px, calc(100vw - 40px)); }
+
+.modal--bar .modal__head { cursor: move; }
+
 .modal__head {
   display: flex;
   align-items: center;
@@ -799,6 +808,19 @@ body.is-resizing-bar .bar { cursor: ew-resize; }
   background: none;
   /* 1日ぶんの幅に収まらないので、列の中央から左右へはみ出させる */
   justify-content: center;
+}
+
+/*
+ * 文字ラベル工程は、はみ出した文字の部分もクリックできるようにする
+ * （CLAUDE.md 5.11 ラベルの矩形をクリック領域とする）。
+ * バー自体は1日幅のままにし、中の文字だけを掴めるようにしています。
+ */
+.bar--mark { pointer-events: none; }
+
+.bar--mark > .bar__hit {
+  pointer-events: auto;
+  padding: 0 4px;
+  white-space: nowrap;
 }
 
 .mark--mt    { color: var(--mark-mt); }
