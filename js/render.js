@@ -19,11 +19,13 @@ var Render = (function () {
     '75': 'p75'
   };
 
-  // バーを持たない工程（CLAUDE.md 3）→ CSSクラス名。文字色は工程で固定（CLAUDE.md 6.2）
+  // 文字ラベル工程（CLAUDE.md 3）→ CSSクラス名。既定の文字色は工程ごとに固定（CLAUDE.md 6.2）
   var MARK_KEYS = {
     'MT': 'mt',
     '入稿': 'nyuko',
-    '納品': 'nohin'
+    '納品': 'nohin',
+    'TW': 'tw',
+    '有休': 'yukyu'
   };
 
   /*

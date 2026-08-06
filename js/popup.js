@@ -654,21 +654,7 @@ var Popup = (function () {
     var head = el('div', 'modal__head modal__head--draggable');
     head.appendChild(el('h2', 'modal__title', '案件の編集'));
 
-    // 右上は［案件を削除］（CLAUDE.md 5.6）。確認ダイアログ必須
-    var removeButton = el('button', 'modal__close settings__delete', '案件を削除');
-    removeButton.type = 'button';
-    removeButton.addEventListener('click', function () {
-      var project = currentProject();
-      if (!project) { return; }
-      var name = project.title || '(無題)';
-      if (!window.confirm('案件「' + name + '」を削除します。元に戻せません。よろしいですか？')) {
-        return;
-      }
-      if (prun(function () { Store.removeProject(currentProjectId); })) {
-        projectDialog.close();
-      }
-    });
-    head.appendChild(removeButton);
+    // ボタンはすべて下部に置くため、見出し帯には何も入れない（CLAUDE.md 5.6）
     projectDialog.appendChild(head);
     makeDraggable(projectDialog, head);
 
@@ -714,7 +700,11 @@ var Popup = (function () {
     barSection.appendChild(barAdd);
     body.appendChild(barSection);
 
-    // ---- 下部のボタン ----
+    /* ---- 下部のボタン（CLAUDE.md 5.6） ----
+     * 左から［完了・非表示］［案件を削除］、右端に［閉じる］。
+     * ［案件を削除］は赤系の危険色にし、誤操作を防ぐため
+     * ［完了・非表示］との間に間隔を空けます。
+     */
     var foot = el('div', 'modal__foot');
 
     pparts.hidden = el('button', 'modal__foot-button', '完了・非表示');
@@ -725,8 +715,23 @@ var Popup = (function () {
     });
     foot.appendChild(pparts.hidden);
 
-    // 下部は［閉じる］（CLAUDE.md 5.6）
-    var close = el('button', 'modal__foot-button', '閉じる');
+    var removeButton = el('button', 'modal__foot-button modal__foot-button--danger', '案件を削除');
+    removeButton.type = 'button';
+    removeButton.addEventListener('click', function () {
+      var project = currentProject();
+      if (!project) { return; }
+      var name = project.title || '(無題)';
+      // 確認ダイアログ必須（CLAUDE.md 5.6）
+      if (!window.confirm('案件「' + name + '」を削除します。元に戻せません。よろしいですか？')) {
+        return;
+      }
+      if (prun(function () { Store.removeProject(currentProjectId); })) {
+        projectDialog.close();
+      }
+    });
+    foot.appendChild(removeButton);
+
+    var close = el('button', 'modal__foot-button modal__foot-button--close', '閉じる');
     close.type = 'button';
     close.addEventListener('click', function () { projectDialog.close(); });
     foot.appendChild(close);

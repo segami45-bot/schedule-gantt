@@ -336,11 +336,13 @@ group('期間を持つ工程と、日付の性質を持つ工程');
 is(Store.hasBar('初校'), true, '初校は色付きバーを持つ');
 is(Store.hasBar('修正'), true, '修正は色付きバーを持つ');
 is(Store.hasBar('ラフ'), true, 'ラフは色付きバーを持つ');
-is(Store.hasBar('MT'), false, 'MTはバーを持たない（文字のみ）');
-is(Store.hasBar('入稿'), false, '入稿はバーを持たない（文字のみ）');
-is(Store.hasBar('納品'), false, '納品はバーを持たない（文字のみ）');
-is(Store.STAGES.length, 6, '工程は6種');
-is(Store.STAGES.join('/'), '初校/修正/ラフ/MT/入稿/納品', '工程の並び順が仕様どおり');
+is(Store.hasBar('MT'), false, 'MTは文字ラベル工程');
+is(Store.hasBar('入稿'), false, '入稿は文字ラベル工程');
+is(Store.hasBar('納品'), false, '納品は文字ラベル工程');
+is(Store.hasBar('TW'), false, 'TWは文字ラベル工程');
+is(Store.hasBar('有休'), false, '有休は文字ラベル工程');
+is(Store.STAGES.length, 8, '工程は8種');
+is(Store.STAGES.join('/'), '初校/修正/ラフ/MT/入稿/納品/TW/有休', '工程の並び順が仕様どおり');
 is(Store.STATUSES.length, 6, '状態は6種');
 is(Store.STATUSES.join('/'), '未着手/制作中/校了/25/50/75', '状態の並び順が仕様どおり');
 
@@ -361,6 +363,23 @@ var mt = Store.findProject(proj.id).bars[1];
 is(Store.barDayCount(mt), 1, 'MTも期間を指定しても1日幅になる');
 is(Store.ymdTextFromSerial(mt.start), '2026-08-20', 'MTの日付は開始日が使われる');
 is(Store.barLabel(mt), 'MT', 'MTのラベルはそのまま');
+
+/* ---- TW・有休（CLAUDE.md 3 / v2.8 で追加） ---- */
+Store.updateBar(proj.id, bar.id, { stage: 'TW', startYmd: '2026-08-21', endYmd: '2026-08-25' });
+var tw = Store.findProject(proj.id).bars[1];
+is(Store.barDayCount(tw), 1, 'TWは期間を指定しても1日幅になる');
+is(Store.ymdTextFromSerial(tw.start), '2026-08-21', 'TWの日付は開始日が使われる');
+is(Store.barLabel(tw), 'TW', 'TWのラベルはそのまま（番号は付かない）');
+
+Store.updateBar(proj.id, bar.id, { markColor: 'white' });
+is(Store.findProject(proj.id).bars[1].markColor, 'white', 'TWでも文字色を白にできる');
+
+Store.updateBar(proj.id, bar.id, { stage: '有休', startYmd: '2026-08-24' });
+var yukyu = Store.findProject(proj.id).bars[1];
+is(Store.barDayCount(yukyu), 1, '有休も1日幅');
+is(Store.barLabel(yukyu), '有休', '有休のラベルはそのまま');
+is(yukyu.markColor, 'white', '工程を変えても文字色は保たれる');
+Store.updateBar(proj.id, bar.id, { markColor: 'default' });
 
 // 期間ものに戻すと複数日にできる
 Store.updateBar(proj.id, bar.id, { stage: 'ラフ', startYmd: '2026-08-03', endYmd: '2026-08-07' });

@@ -47,10 +47,12 @@
   /* 凡例に出す囲い点線の見本の色（塗りなし・グレー） */
   --legend-cls-line: #8a9096;
 
-  /* ---- バーを持たない工程の文字色（CLAUDE.md 6.2） ---- */
+  /* ---- 文字ラベル工程の既定の文字色（CLAUDE.md 6.2） ---- */
   --mark-mt:    #6b7176;  /* MT（グレー） */
   --mark-nohin: #6b7176;  /* 納品（グレー） */
   --mark-nyuko: #c0392b;  /* 入稿（赤） */
+  --mark-tw:    #7cb87c;  /* TW（薄い緑） */
+  --mark-yukyu: #e08a8a;  /* 有休（うすい赤） */
   --mark-white: #ffffff;  /* 白（色付きバーに重なる場合用） */
 
   /* ---- 行の背景色（CLAUDE.md 6.3） ---- */
@@ -405,10 +407,12 @@ body.is-dragging-modal { user-select: none; }
   box-shadow: 0 0 0 1px var(--c-bg) inset;
 }
 
-/* MT・入稿・納品の文字色を選ぶ見本（CLAUDE.md 6.2） */
+/* 文字ラベル工程の文字色を選ぶ見本（CLAUDE.md 6.2） */
 .mark-sw--mt    { background: var(--mark-mt); }
 .mark-sw--nohin { background: var(--mark-nohin); }
 .mark-sw--nyuko { background: var(--mark-nyuko); }
+.mark-sw--tw    { background: var(--mark-tw); }
+.mark-sw--yukyu { background: var(--mark-yukyu); }
 
 /* 白は下地と同じ色なので、選択していないときも枠線で分かるようにする */
 .mark-sw--white {
@@ -417,9 +421,13 @@ body.is-dragging-modal { user-select: none; }
 }
 
 /* ---- ポップアップ下部のボタン ---- */
+/*
+ * 下部のボタン列（CLAUDE.md 5.6）。
+ * 左から［完了・非表示］［案件を削除］、右端に［閉じる］。
+ */
 .modal__foot {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   gap: 10px;
   margin-top: 20px;
   padding-top: 12px;
@@ -427,6 +435,19 @@ body.is-dragging-modal { user-select: none; }
 }
 
 .modal__foot-button { flex: 0 0 auto; }
+
+/* ［案件を削除］は赤系の危険色。誤操作を防ぐため左隣との間隔を広く取る */
+.modal__foot-button--danger {
+  margin-left: 32px;
+  color: #ffffff;
+  background: #c0392b;
+  border-color: #a5301f;
+}
+
+.modal__foot-button--danger:hover { background: #a5301f; }
+
+/* ［閉じる］は右端に寄せる */
+.modal__foot-button--close { margin-left: auto; }
 
 /* ============================================================
  * 状態カラーの凡例（CLAUDE.md 5.1 / 6）
@@ -762,6 +783,8 @@ body.is-resizing-bar .bar { cursor: ew-resize; }
 .mark--mt    { color: var(--mark-mt); }
 .mark--nyuko { color: var(--mark-nyuko); }
 .mark--nohin { color: var(--mark-nohin); }
+.mark--tw    { color: var(--mark-tw); }
+.mark--yukyu { color: var(--mark-yukyu); }
 .mark--white { color: var(--mark-white); }
 
 /* ============================================================
