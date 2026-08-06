@@ -448,6 +448,77 @@ var Render = (function () {
     return rows;
   }
 
+  /* ============================================================
+   * TW・有休の日ハイライト（CLAUDE.md 5.12）
+   *
+   * 担当者ごとに、その人の案件に置かれた TW / 有休 のバーから
+   * 「その日は在宅／休み」という日の集合を作ります。
+   * 専用のデータは持たず、毎回バーから導出するので、
+   * バーの追加・移動・削除に自動で追従します。
+   * ============================================================ */
+
+  var TW_STAGE = 'TW';
+  var YUKYU_STAGE = '有休';
+
+  /*
+   * 担当者ID → { tw: {通算日数: true}, yukyu: {…} } を作ります。
+   * showHidden が false のときは、非表示の案件に置かれたバーを数えません。
+   */
+  function buildDayMarks(showHidden) {
+    var marks = {};
+
+    Store.listMembers().forEach(function (member) {
+      var tw = {};
+      var yukyu = {};
+
+      Store.listProjects(member.id, showHidden).forEach(function (project) {
+        project.bars.forEach(function (bar) {
+          if (bar.stage !== TW_STAGE && bar.stage !== YUKYU_STAGE) { return; }
+          // TW・有休は常に1日幅だが、念のため期間ぶんを塗る
+          var from = Store.dayIndexFromSerial(bar.start);
+          var to = Store.dayIndexFromSerial(bar.end);
+          for (var day = from; day <= to; day++) {
+            if (bar.stage === YUKYU_STAGE) { yukyu[day] = true; } else { tw[day] = true; }
+          }
+        });
+      });
+
+      marks[member.id] = { tw: tw, yukyu: yukyu };
+    });
+
+    return marks;
+  }
+
+  /*
+   * 案件行に敷くセル背景の層を作ります。
+   * 色は1色のみ（重ね塗りしない）。優先順位は 今日 ＞ 有休 ＞ TW ＞ 土日祝。
+   * 今日の列は黄色を活かすため塗らず、下の列色（.stripes）を透かせます。
+   * 塗る日が1日も無ければ null を返し、余分な要素を作りません。
+   */
+  function buildDayFill(days, mark) {
+    if (!mark) { return null; }
+
+    var layer = el('div', 'dayfill');
+    var painted = false;
+
+    days.forEach(function (info) {
+      var cell = el('div', 'dayfill__cell');
+      if (!info.isToday) {
+        // 同じ日にTWと有休が重なったら有休を優先（CLAUDE.md 5.12）
+        if (mark.yukyu[info.dayIndex]) {
+          cell.className += ' is-yukyu';
+          painted = true;
+        } else if (mark.tw[info.dayIndex]) {
+          cell.className += ' is-tw';
+          painted = true;
+        }
+      }
+      layer.appendChild(cell);
+    });
+
+    return painted ? layer : null;
+  }
+
   // 行に共通で付けるクラス（hidden の案件は半透明にする / CLAUDE.md 5.4）
   function rowClass(row) {
     var cls = 'row row--' + row.kind;
@@ -496,10 +567,18 @@ var Render = (function () {
     return node;
   }
 
-  // 右側: 案件行にはバーを置き、部署・担当者の行は空にする
-  function buildGridRow(row, viewStartDay, dayCount) {
+  /*
+   * 右側: 案件行にはバーを置き、部署・担当者の行は空にする。
+   * 案件行にはさらに TW・有休の日ハイライトを敷く（CLAUDE.md 5.12）。
+   * 塗るのは案件行だけで、担当者ヘッダ行・部署見出し行は塗らない。
+   */
+  function buildGridRow(row, days, viewStartDay, dayCount, marks) {
     var node = el('div', rowClass(row));
     if (row.kind !== 'project') { return node; }
+
+    // 背景（バーより先に入れて後ろに置く）
+    var fill = buildDayFill(days, marks[row.member.id]);
+    if (fill) { node.appendChild(fill); }
 
     // 開始日順に描き、重なった部分は後のバーが前面になる（CLAUDE.md 5.5）
     var bars = row.project.bars.slice().sort(function (a, b) { return a.start - b.start; });
@@ -527,6 +606,8 @@ var Render = (function () {
     var days = buildDays(view);
     var viewStartDay = Store.dayIndexFromSerial(view.startSerial);
     var rows = buildRowList(showHidden);
+    // TW・有休の日ハイライト用（CLAUDE.md 5.12）
+    var dayMarks = buildDayMarks(showHidden);
 
     // ドラッグ計算に使う描画条件を控えておく（CLAUDE.md 5.10）
     dragCtx.viewStartDay = viewStartDay;
@@ -570,7 +651,7 @@ var Render = (function () {
 
     var rowsNode = el('div', 'rows');       // 行とバー（前面）
     rows.forEach(function (row) {
-      var node = buildGridRow(row, viewStartDay, view.dayCount);
+      var node = buildGridRow(row, days, viewStartDay, view.dayCount, dayMarks);
       if (row.kind === 'project') { makeClickable(node, row.project); }
       rowsNode.appendChild(node);
     });

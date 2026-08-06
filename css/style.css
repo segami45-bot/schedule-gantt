@@ -55,6 +55,10 @@
   --mark-yukyu: #e08a8a;  /* 有休（うすい赤） */
   --mark-white: #ffffff;  /* 白（色付きバーに重なる場合用） */
 
+  /* ---- TW・有休の日ハイライト色（CLAUDE.md 6.4） ---- */
+  --day-tw:    #e6f2e6;  /* TW（薄緑） */
+  --day-yukyu: #fbe9e9;  /* 有休（うす赤） */
+
   /* ---- 行の背景色（CLAUDE.md 6.3） ---- */
   --row-dept-bg:    #eef0f2;  /* 部署見出し行 */
   --row-member-bg:  #fafbfc;  /* 担当者ヘッダ行 */
@@ -721,6 +725,23 @@ body.is-dragging-modal { user-select: none; }
  * 列幅が伸び縮みするため、位置と幅は割合（%）で指定しています。
  * ============================================================ */
 .rows .row--project { position: relative; }
+
+/* ============================================================
+ * TW・有休の日ハイライト（CLAUDE.md 5.12 / 6.4）
+ * 案件行の中に敷く背景層。バーより後ろ、列色（.stripes）より前に来ます。
+ * 今日の列は塗らないので、下の黄色がそのまま透けます。
+ * ============================================================ */
+.dayfill {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--day-count), minmax(0, 1fr));
+  /* クリックやバーのドラッグを邪魔しない */
+  pointer-events: none;
+}
+
+.dayfill__cell.is-tw    { background: var(--day-tw); }
+.dayfill__cell.is-yukyu { background: var(--day-yukyu); }
 
 .bar {
   position: absolute;
