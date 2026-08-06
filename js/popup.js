@@ -878,6 +878,141 @@ var Popup = (function () {
     placeNearBar(anchor);
   }
 
+  /* ============================================================
+   * 担当者ヘッダの直接編集（CLAUDE.md 5.13）
+   *
+   * 案件数・一言コメントはその場で入力欄に変わり、
+   * 絵文字は直下に選択パネルを出します。
+   * 名前・追加削除・所属変更は設定モーダル（5.8）のままです。
+   * ============================================================ */
+
+  var openEditor = null; // 開いている編集を閉じる関数（同時に1つだけ）
+
+  function closeEditor() {
+    if (openEditor) {
+      var fn = openEditor;
+      openEditor = null;
+      fn();
+    }
+  }
+
+  // 値を保存して画面を描き直す。拒否されたら理由を出して元に戻す
+  function saveMemberField(member, key, value) {
+    var patch = {};
+    patch[key] = value;
+    try {
+      Store.updateMember(member.id, patch);
+    } catch (e) {
+      window.alert(e.message);
+      return false;
+    }
+    if (onChange) { onChange(); }
+    return true;
+  }
+
+  /* ---- 案件数・一言コメント: その場で入力欄に変える ---- */
+
+  function editTextField(member, key, node) {
+    var input = el('input', 'member__input');
+    input.type = 'text';
+    input.value = member[key] || '';
+    // 表示位置のまま置き換え、レイアウトが大きく動かないようにする（CLAUDE.md 5.13）
+    input.style.width = Math.max(node.getBoundingClientRect().width, 40) + 'px';
+
+    var done = false;
+
+    function finish(save) {
+      if (done) { return; }
+      done = true;
+      openEditor = null;
+      document.removeEventListener('mousedown', onOutside, true);
+      if (save) {
+        // 保存すると行が作り直されるので、入力欄は置き換えなくてよい
+        if (saveMemberField(member, key, input.value)) { return; }
+      }
+      if (input.parentNode) { input.parentNode.replaceChild(node, input); }
+    }
+
+    function onOutside(e) {
+      if (e.target !== input) { finish(true); } // 欄外クリックで確定
+    }
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+    });
+    input.addEventListener('click', function (e) { e.stopPropagation(); });
+
+    node.parentNode.replaceChild(input, node);
+    input.focus();
+    input.select();
+
+    openEditor = function () { finish(false); };
+    // 直後の同じクリックで閉じないよう、次の処理から監視する
+    setTimeout(function () {
+      if (!done) { document.addEventListener('mousedown', onOutside, true); }
+    }, 0);
+  }
+
+  /* ---- 絵文字: 直下に選択パネルを出す ---- */
+
+  function editEmojiField(member, node) {
+    var panel = el('div', 'emojipick');
+
+    function choose(value) {
+      close();
+      saveMemberField(member, 'emoji', value);
+    }
+
+    var none = el('button', 'emojipick__button emojipick__none', 'なし');
+    none.type = 'button';
+    none.addEventListener('click', function (e) { e.stopPropagation(); choose(''); });
+    panel.appendChild(none);
+
+    EMOJI_CHOICES.forEach(function (emoji) {
+      var button = el('button', 'emojipick__button', emoji);
+      button.type = 'button';
+      if (emoji === member.emoji) { button.className += ' is-selected'; }
+      button.addEventListener('click', function (e) { e.stopPropagation(); choose(emoji); });
+      panel.appendChild(button);
+    });
+
+    function close() {
+      openEditor = null;
+      document.removeEventListener('mousedown', onOutside, true);
+      if (panel.parentNode) { panel.parentNode.removeChild(panel); }
+    }
+
+    // パネル外クリックで取り消し（CLAUDE.md 5.13）
+    function onOutside(e) {
+      if (!panel.contains(e.target)) { close(); }
+    }
+
+    document.body.appendChild(panel);
+
+    // クリックした項目の直下に置き、画面からはみ出さないようにする
+    var from = node.getBoundingClientRect();
+    var size = panel.getBoundingClientRect();
+    var left = Math.min(from.left, Math.max(0, window.innerWidth - size.width - 4));
+    var top = from.bottom + 4;
+    if (top + size.height > window.innerHeight) { top = Math.max(0, from.top - 4 - size.height); }
+    panel.style.left = Math.max(left, 4) + 'px';
+    panel.style.top = top + 'px';
+
+    openEditor = close;
+    setTimeout(function () { document.addEventListener('mousedown', onOutside, true); }, 0);
+  }
+
+  /*
+   * 担当者ヘッダの項目がクリックされたときの入口（render.js から呼ばれる）。
+   * key は 'countText' / 'emoji' / 'comment' のいずれか。
+   */
+  function editMemberField(member, key, node) {
+    closeEditor(); // 同時に開くのは1つだけ
+    if (key === 'emoji') { editEmojiField(member, node); }
+    else { editTextField(member, key, node); }
+  }
+
   /* ------------------------------------------------------------
    * 公開
    * ------------------------------------------------------------ */
@@ -926,6 +1061,7 @@ var Popup = (function () {
     openSettings: openSettings,
     openProject: openProject,
     openBar: openBar,
+    editMemberField: editMemberField,
     addProject: addProject
   };
 }());

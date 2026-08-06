@@ -36,6 +36,8 @@
       onOpenProject: Popup.openProject,
       // バーのクリックで工程バー個別ポップアップ（CLAUDE.md 5.11）
       onOpenBar: Popup.openBar,
+      // 担当者ヘッダの案件数・絵文字・一言をその場で編集（CLAUDE.md 5.13）
+      onEditMemberField: Popup.editMemberField,
       // 担当者ヘッダの「＋」で新規案件（CLAUDE.md 5.7）
       onAddProject: Popup.addProject,
       // バーのドラッグ移動が確定したら描き直す（CLAUDE.md 5.10）

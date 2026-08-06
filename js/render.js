@@ -537,6 +537,29 @@ var Render = (function () {
     return cls;
   }
 
+  /*
+   * 担当者ヘッダの編集できる項目を1つ作ります（CLAUDE.md 5.13）。
+   * 値が空のときは薄いプレースホルダーを出し、クリックできる幅を確保します。
+   * クリックすると popup.js の編集処理を呼びます。
+   */
+  function buildMemberField(member, key, className, placeholder) {
+    var value = member[key] || '';
+    var node = el('span', className + ' member__field', value || placeholder);
+    if (!value) { node.className += ' is-placeholder'; }
+    // 案件数は「（9）」のように括弧付きで見せる
+    if (key === 'countText' && value) { node.textContent = '（' + value + '）'; }
+
+    node.title = member.name + 'さんの' + placeholder + 'を変更';
+    node.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (memberEditor) { memberEditor(member, key, node); }
+    });
+    return node;
+  }
+
+  // 担当者ヘッダ項目の編集を担当する関数（app.js が popup.js のものを渡す）
+  var memberEditor = null;
+
   // 左側: 部署名・担当者・案件タイトル
   function buildLabelRow(row, handlers) {
     var node = el('div', rowClass(row));
@@ -550,9 +573,15 @@ var Render = (function () {
       var m = row.member;
       // 名前（countText）emoji comment を横並び（CLAUDE.md 5.4）
       node.appendChild(el('span', 'member__name', m.name));
-      if (m.countText) { node.appendChild(el('span', 'member__count', '（' + m.countText + '）')); }
-      if (m.emoji) { node.appendChild(el('span', 'member__emoji', m.emoji)); }
-      if (m.comment) { node.appendChild(el('span', 'member__comment', m.comment)); }
+
+      /*
+       * 案件数・絵文字・一言コメントはその場で編集できる（CLAUDE.md 5.13）。
+       * 空でもクリックできるよう、薄いプレースホルダーを常時出します。
+       * 編集の中身は popup.js（絵文字の一覧を持つ側）に任せます。
+       */
+      node.appendChild(buildMemberField(m, 'countText', 'member__count', '数'));
+      node.appendChild(buildMemberField(m, 'emoji', 'member__emoji', '◯'));
+      node.appendChild(buildMemberField(m, 'comment', 'member__comment', '一言'));
 
       // 行末に新規案件追加の「＋」ボタン（CLAUDE.md 5.4 / 5.7）
       if (handlers.onAddProject) {
@@ -626,6 +655,8 @@ var Render = (function () {
     dragCtx.onBarChange = opts.onBarChange || null;
     // バーのクリックは工程バー個別ポップアップへ（CLAUDE.md 5.11）
     dragCtx.onOpenBar = opts.onOpenBar || null;
+    // 担当者ヘッダ項目の直接編集（CLAUDE.md 5.13）
+    memberEditor = opts.onEditMemberField || null;
 
     // 案件行・バーのクリックで編集ポップアップを開く（CLAUDE.md 5.6）
     function makeClickable(node, project) {

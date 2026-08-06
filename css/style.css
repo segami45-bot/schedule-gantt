@@ -611,6 +611,66 @@ body.is-dragging-modal { user-select: none; }
 
 .member__name    { font-weight: 700; }
 
+/* ---- 担当者ヘッダの直接編集（CLAUDE.md 5.13） ---- */
+.member__field {
+  cursor: text;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.member__field:hover { background: #e7edf4; }
+
+/* 値が空の項目もクリックできるよう、薄いプレースホルダーを出す */
+.member__field.is-placeholder { color: #b9bdc2; }
+
+/* 絵文字はクリックできることが伝わるよう指カーソルにする */
+.member__emoji { cursor: pointer; }
+
+/* その場編集の入力欄。表示位置のまま置き換える */
+.member__input {
+  font: inherit;
+  min-width: 40px;
+  padding: 0 3px;
+  color: var(--c-text);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border-strong);
+  border-radius: 3px;
+}
+
+/* 絵文字の選択パネル（CLAUDE.md 5.13 / 5.8 の15種＋なし） */
+.emojipick {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  width: 210px;
+  padding: 6px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border-strong);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .2);
+}
+
+.emojipick__button {
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  border-color: transparent;
+}
+
+.emojipick__button:hover { background: #eef0f2; }
+
+.emojipick__button.is-selected { border-color: var(--c-text); }
+
+.emojipick__none {
+  width: 100%;
+  font-size: 11px;
+  color: var(--c-text-sub);
+}
+
 /* 行末の新規案件追加ボタン（CLAUDE.md 5.4 / 5.7） */
 .member__add {
   flex: 0 0 auto;
