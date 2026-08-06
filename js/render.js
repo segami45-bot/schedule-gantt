@@ -430,7 +430,7 @@ var Render = (function () {
 
   /*
    * 表示する行の並びを組み立てます。
-   * 部署 > 担当者 > 案件 の3階層。複数担当の案件は各担当者の下に同じ内容で並びます。
+   * 部署 > 担当者 > 案件 の3階層。案件は必ず1名の担当者に属します（CLAUDE.md 3）。
    */
   function buildRowList(showHidden) {
     var rows = [];

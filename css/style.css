@@ -312,35 +312,11 @@ body.is-dragging-modal { user-select: none; }
   color: var(--c-text-sub);
 }
 
-/* ---- 担当者のチェックボックス ---- */
+/* ---- 担当者のプルダウン（1名 / CLAUDE.md 5.6） ---- */
 .assignee__list {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.assignee__group {
-  display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 12px;
 }
-
-.assignee__dept {
-  flex: 0 0 auto;
-  min-width: 5em;
-  font-size: 11px;
-  color: var(--c-text-sub);
-}
-
-.assignee {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-}
-
-.assignee input { cursor: pointer; }
 
 /* ---- バーの行 ---- */
 .barrow {

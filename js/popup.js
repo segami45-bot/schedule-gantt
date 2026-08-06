@@ -262,12 +262,9 @@ var Popup = (function () {
     var del = el('button', 'settings__delete', '削除');
     del.type = 'button';
     del.addEventListener('click', function () {
-      // 唯一の担当になっている案件があれば Store 側が理由付きで拒否します
-      var sole = Store.soleAssignedProjects(member.id);
-      if (sole.length === 0) {
-        var others = Store.listProjects(member.id, true).length;
-        var extra = others > 0 ? '\n（' + others + '件の案件から担当を外します）' : '';
-        if (!window.confirm('「' + member.name + '」さんを削除します。よろしいですか？' + extra)) {
+      // 担当している案件があれば Store 側が理由付きで拒否します（CLAUDE.md 5.8）
+      if (Store.assignedProjects(member.id).length === 0) {
+        if (!window.confirm('「' + member.name + '」さんを削除します。よろしいですか？')) {
           return;
         }
       }
@@ -424,44 +421,41 @@ var Popup = (function () {
     return currentProjectId ? Store.findProject(currentProjectId) : null;
   }
 
-  /* ---- 担当者のチェックボックス（最低1名 / CLAUDE.md 4.3・5.6） ---- */
-
+  /*
+   * 担当者のプルダウン（1名 / CLAUDE.md 5.6）。
+   * 案件は必ず1名の担当者に属するため、外すことはできず付け替えのみです。
+   * 変更するとその担当者の下へ案件行が移ります。
+   */
   function buildAssignees(project) {
     var box = pparts.assignees;
     box.innerHTML = '';
 
+    var select = el('select', 'settings__input settings__input--grow');
+
+    // 部署ごとにまとめて、担当者が増えても探しやすくする
     Store.listDepartments().forEach(function (dept) {
       var members = Store.listMembers(dept.id);
       if (members.length === 0) { return; }
 
-      var group = el('div', 'assignee__group');
-      group.appendChild(el('span', 'assignee__dept', dept.name));
-
+      var group = el('optgroup');
+      group.label = dept.name;
       members.forEach(function (member) {
-        var label = el('label', 'assignee');
-        var check = el('input');
-        check.type = 'checkbox';
-        check.checked = project.assigneeIds.indexOf(member.id) >= 0;
-
-        check.addEventListener('change', function () {
-          var ids = [];
-          box.querySelectorAll('input[type="checkbox"]').forEach(function (node) {
-            if (node.checked) { ids.push(node.dataset.memberId); }
-          });
-          // 0名にする操作は Store 側が拒否します
-          if (!prun(function () { Store.setAssignees(currentProjectId, ids); })) {
-            check.checked = !check.checked; // 拒否されたらチェックを戻す
-          }
-        });
-
-        check.dataset.memberId = member.id;
-        label.appendChild(check);
-        label.appendChild(el('span', null, member.name));
-        group.appendChild(label);
+        var option = el('option', null, member.name);
+        option.value = member.id;
+        if (member.id === project.assigneeId) { option.selected = true; }
+        group.appendChild(option);
       });
-
-      box.appendChild(group);
+      select.appendChild(group);
     });
+
+    select.addEventListener('change', function () {
+      // 担当者を変えると行の位置が変わるため、ガント側を描き直す
+      if (!prun(function () { Store.setAssignee(currentProjectId, select.value); })) {
+        select.value = project.assigneeId; // 拒否されたら元に戻す
+      }
+    });
+
+    box.appendChild(select);
   }
 
   /* ---- バー1本ぶんの行（CLAUDE.md 5.6） ---- */
@@ -698,7 +692,8 @@ var Popup = (function () {
 
     // ---- 担当者 ----
     var assigneeSection = section('担当者');
-    assigneeSection.appendChild(el('p', 'settings__hint', '最低1名必要です。'));
+    assigneeSection.appendChild(el('p', 'settings__hint',
+      '案件は1名の担当者に属します。変更するとその担当者の下へ移ります。'));
     pparts.assignees = el('div', 'assignee__list');
     assigneeSection.appendChild(pparts.assignees);
     body.appendChild(assigneeSection);

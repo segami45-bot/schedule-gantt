@@ -34,7 +34,7 @@
   var DATA_KEY = 'sgantt.data'; // データ本体の保存キー（CLAUDE.md 5.9）
   var VIEW_KEY = 'sgantt.view'; // 表示状態の保存キー（CLAUDE.md 5.9）
 
-  var DATA_VERSION = 3; // 現在のデータ構造の版（CLAUDE.md 4.2）
+  var DATA_VERSION = 4; // 現在のデータ構造の版（CLAUDE.md 4.2）
 
   var MIN_DAY_COUNT = 1;   // 表示幅の下限（CLAUDE.md 5.2）
   var MAX_DAY_COUNT = 120; // 表示幅の上限（CLAUDE.md 5.2）
@@ -398,6 +398,8 @@
      * 版が上がったときは、ここに旧→新の変換を追加していきます。
      *   1 → 2: 工程・状態の名称変更、CL確認中→囲い点線（migrateBar で行う）
      *   2 → 3: バーに markColor を追加（省略時は既定色になるため、個別の処理は不要）
+     *   3 → 4: 担当者を単一化。assigneeIds（配列）→ assigneeId（1名）。
+     *          担当2名以上の案件は人数分の独立した案件に分割する（案件の項で行う）
      */
 
     if (!Array.isArray(raw.departments) || !Array.isArray(raw.members) ||
@@ -438,45 +440,89 @@
     });
     var memberIds = members.map(function (m) { return m.id; });
 
-    // ---- 案件 ----
-    var projects = raw.projects.map(function (p, i) {
+    /* ---- 案件 ----
+     * dataVersion 3 までは assigneeIds（配列）で複数担当を持てました。
+     * 4 からは assigneeId（1名）に変わるため、担当2名以上の案件は
+     * 人数分の独立した案件に分割します（CLAUDE.md 11 の v2.7）。
+     */
+    var projects = [];
+    raw.projects.forEach(function (p, i) {
       if (!isObject(p)) {
         throw fail('案件の形式が正しくありません（' + (i + 1) + '件目）。');
       }
       var title = freeText(p.title);
       var label = title || '(無題)';
 
-      if (!Array.isArray(p.assigneeIds)) {
-        throw fail('案件「' + label + '」に担当者の一覧がありません。');
-      }
-      // 重複を取り除きつつ、存在しない担当者を指していないか確かめる
-      var assigneeIds = [];
-      p.assigneeIds.forEach(function (id) {
-        if (memberIds.indexOf(id) < 0) {
+      // 旧版の配列と新版の単一IDの両方を受け取り、担当者IDの一覧にそろえる
+      var ids = [];
+      if (version < 4 && Array.isArray(p.assigneeIds)) {
+        p.assigneeIds.forEach(function (id) {
+          if (memberIds.indexOf(id) < 0) {
+            throw fail('案件「' + label + '」が、存在しない担当者を指しています。');
+          }
+          if (ids.indexOf(id) < 0) { ids.push(id); }
+        });
+        if (ids.length !== p.assigneeIds.length) {
+          note('案件「' + label + '」の担当者の重複を取り除きました。');
+        }
+      } else if (p.assigneeId !== undefined) {
+        if (memberIds.indexOf(p.assigneeId) < 0) {
           throw fail('案件「' + label + '」が、存在しない担当者を指しています。');
         }
-        if (assigneeIds.indexOf(id) < 0) { assigneeIds.push(id); }
-      });
-      if (assigneeIds.length !== p.assigneeIds.length) {
-        note('案件「' + label + '」の担当者の重複を取り除きました。');
+        ids.push(p.assigneeId);
+      } else {
+        throw fail('案件「' + label + '」に担当者がありません。');
       }
-      // 担当者は最低1名（CLAUDE.md 4.3）
-      if (assigneeIds.length === 0) {
-        throw fail('案件「' + label + '」に担当者が1人もいません。');
+
+      /*
+       * 想定外の担当0名。案件を捨てるとデータが失われるため、
+       * 先頭の担当者に割り当てて保全します（CLAUDE.md 9-6）。
+       */
+      if (ids.length === 0) {
+        if (members.length === 0) {
+          throw fail('案件「' + label + '」に担当者がおらず、割り当てられる担当者もいません。');
+        }
+        ids.push(members[0].id);
+        note('案件「' + label + '」に担当者がいなかったため、「' + members[0].name +
+             '」さんに割り当てました。');
       }
 
       if (!Array.isArray(p.bars)) {
         throw fail('案件「' + label + '」にバーの一覧がありません。');
       }
 
-      return {
-        id: typeof p.id === 'string' && p.id ? p.id : newId(),
-        title: title,
-        assigneeIds: assigneeIds,
-        hidden: p.hidden === true,
-        order: Math.floor(Number(p.order)) || (i + 1),
-        bars: p.bars.map(function (b) { return migrateBar(b, label, version); })
-      };
+      var order = Math.floor(Number(p.order)) || (i + 1);
+      var bars = p.bars.map(function (b) { return migrateBar(b, label, version); });
+
+      if (ids.length > 1) {
+        note('案件「' + label + '」は担当者が' + ids.length +
+             '名だったため、' + ids.length + '件の独立した案件に分けました。');
+      }
+
+      ids.forEach(function (memberId, n) {
+        /*
+         * 2件目以降は複製。以後は互いに独立させるため、
+         * 案件・バーとも新しいIDを付け直します。
+         */
+        var isCopy = n > 0;
+        projects.push({
+          id: !isCopy && typeof p.id === 'string' && p.id ? p.id : newId(),
+          title: title,
+          assigneeId: memberId,
+          hidden: p.hidden === true,
+          order: order,
+          bars: bars.map(function (b) {
+            if (!isCopy) { return b; }
+            var copy = {};
+            var key;
+            for (key in b) {
+              if (Object.prototype.hasOwnProperty.call(b, key)) { copy[key] = b[key]; }
+            }
+            copy.id = newId();
+            return copy;
+          })
+        });
+      });
     });
 
     return {
@@ -676,18 +722,16 @@
    */
   function listProjects(memberId, includeHidden) {
     var list = data.projects.filter(function (p) {
-      if (memberId !== undefined && p.assigneeIds.indexOf(memberId) < 0) { return false; }
+      if (memberId !== undefined && p.assigneeId !== memberId) { return false; }
       if (!includeHidden && p.hidden) { return false; }
       return true;
     });
     return sortByOrder(list);
   }
 
-  // その担当者が唯一の担当になっている案件（担当者を消せるかの判定に使う）
-  function soleAssignedProjects(memberId) {
-    return data.projects.filter(function (p) {
-      return p.assigneeIds.length === 1 && p.assigneeIds[0] === memberId;
-    });
+  // その担当者が担当している案件（担当者を消せるかの判定に使う / CLAUDE.md 5.8）
+  function assignedProjects(memberId) {
+    return data.projects.filter(function (p) { return p.assigneeId === memberId; });
   }
 
   /* ============================================================
@@ -774,20 +818,16 @@
     return member;
   }
 
-  // 唯一の担当になっている案件が1件でもあれば削除できない（CLAUDE.md 5.8）
+  // 担当する案件が1件でもあれば削除できない（CLAUDE.md 5.8）
   function removeMember(id) {
     var member = needMember(id);
-    var sole = soleAssignedProjects(id);
-    if (sole.length > 0) {
-      var titles = sole.slice(0, 3).map(function (p) { return p.title || '(無題)'; }).join('・');
-      throw fail('「' + member.name + '」さんが唯一の担当になっている案件が' + sole.length +
-                 '件あります（' + titles + (sole.length > 3 ? ' ほか' : '') +
-                 '）。先に案件側で担当を変更してください。');
+    var assigned = assignedProjects(id);
+    if (assigned.length > 0) {
+      var titles = assigned.slice(0, 3).map(function (p) { return p.title || '(無題)'; }).join('・');
+      throw fail('「' + member.name + '」さんが担当している案件が' + assigned.length +
+                 '件あります（' + titles + (assigned.length > 3 ? ' ほか' : '') +
+                 '）。先に案件の担当者を変更するか、案件を削除してください。');
     }
-    // 複数担当の案件からは担当を外す
-    data.projects.forEach(function (p) {
-      p.assigneeIds = p.assigneeIds.filter(function (a) { return a !== id; });
-    });
     data.members = data.members.filter(function (m) { return m.id !== id; });
     saveData();
     return true;
@@ -822,7 +862,7 @@
     var project = {
       id: newId(),
       title: '',
-      assigneeIds: [memberId],
+      assigneeId: memberId,
       hidden: false,
       order: nextOrder(data.projects),
       bars: [createBar()]
@@ -842,21 +882,14 @@
     return project;
   }
 
-  // 担当者の割当をまとめて置き換える。0名にはできない（CLAUDE.md 4.3）
-  function setAssignees(projectId, memberIds) {
+  /*
+   * 案件の担当者を変更する（CLAUDE.md 5.6）。
+   * 案件は必ず1名の担当者に属するため、付け替えのみで外すことはできません。
+   */
+  function setAssignee(projectId, memberId) {
     var project = needProject(projectId);
-    if (!Array.isArray(memberIds)) {
-      throw fail('担当者の指定が正しくありません。');
-    }
-    var ids = [];
-    memberIds.forEach(function (id) {
-      needMember(id);
-      if (ids.indexOf(id) < 0) { ids.push(id); }
-    });
-    if (ids.length === 0) {
-      throw fail('担当者は最低1名必要です。担当者を選んでください。');
-    }
-    project.assigneeIds = ids;
+    needMember(memberId);
+    project.assigneeId = memberId;
     saveData();
     return project;
   }
@@ -1069,7 +1102,7 @@
     listDepartments: listDepartments,
     listMembers: listMembers,
     listProjects: listProjects,
-    soleAssignedProjects: soleAssignedProjects,
+    assignedProjects: assignedProjects,
 
     // 部署
     addDepartment: addDepartment,
@@ -1084,7 +1117,7 @@
     // 案件・バー
     addProject: addProject,
     updateProject: updateProject,
-    setAssignees: setAssignees,
+    setAssignee: setAssignee,
     toggleHidden: toggleHidden,
     removeProject: removeProject,
     addBar: addBar,

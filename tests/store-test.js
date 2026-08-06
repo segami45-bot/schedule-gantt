@@ -3,7 +3,7 @@
  *
  * 実行方法:  node tests/store-test.js
  *
- * 検証対象: 日付変換・CRUD・migrate・担当0名拒否 ほか（CLAUDE.md 7）
+ * 検証対象: 日付変換・CRUD・migrate・担当者の付け替えと削除制約 ほか（CLAUDE.md 7）
  */
 'use strict';
 
@@ -262,8 +262,7 @@ group('案件の新規追加');
 
 var proj = Store.addProject(miyachi.id);
 is(proj.title, '', 'タイトルは空で作られる');
-is(proj.assigneeIds.length, 1, '担当者1名が割り当てられる');
-is(proj.assigneeIds[0], miyachi.id, '追加した担当者に割り当てられる');
+is(proj.assigneeId, miyachi.id, '追加した担当者に割り当てられる');
 is(proj.hidden, false, '初期状態は非表示ではない');
 is(proj.bars.length, 1, 'バーが1本作られる');
 is(proj.bars[0].stage, 'ラフ', 'バーの初期工程はラフ');
@@ -277,38 +276,38 @@ Store.updateProject(proj.id, { title: 'B88865_ABCフォーラムテキスト' })
 is(Store.findProject(proj.id).title, 'B88865_ABCフォーラムテキスト', 'タイトルを更新できる');
 
 /* ============================================================
- * 10. 担当0名の拒否（CLAUDE.md 4.3・7）
+ * 10. 担当者の付け替え（CLAUDE.md 3・5.6）
  * ============================================================ */
-group('担当者0名の拒否');
+group('担当者の付け替え');
 
-throws(function () { Store.setAssignees(proj.id, []); }, '最低1名', '空配列での割当は拒否');
-throws(function () { Store.setAssignees(proj.id, null); }, '担当者の指定', '配列でない指定は拒否');
-throws(function () { Store.setAssignees(proj.id, ['無い']); }, '担当者が見つかりません', '無い担当者の指定は拒否');
-is(Store.findProject(proj.id).assigneeIds.length, 1, '拒否された後もデータは元のまま');
-
-// 多対多（同じ案件が複数担当者の下に出る / CLAUDE.md 3）
-Store.setAssignees(proj.id, [miyachi.id, sato.id]);
-is(Store.findProject(proj.id).assigneeIds.length, 2, '複数担当を設定できる');
 is(Store.listProjects(miyachi.id).length, 1, '宮地さんの下に表示される');
-is(Store.listProjects(sato.id).length, 1, '佐藤さんの下にも表示される');
+is(Store.listProjects(sato.id).length, 0, '佐藤さんの下には出ない');
 
-Store.setAssignees(proj.id, [miyachi.id, miyachi.id, sato.id]);
-is(Store.findProject(proj.id).assigneeIds.length, 2, '重複した指定は1つにまとめられる');
+// 担当者を変えると、その担当者の下へ移る（複製ではなく移動）
+Store.setAssignee(proj.id, sato.id);
+is(Store.findProject(proj.id).assigneeId, sato.id, '担当者を付け替えられる');
+is(Store.listProjects(sato.id).length, 1, '佐藤さんの下へ移る');
+is(Store.listProjects(miyachi.id).length, 0, '宮地さんの下からは消える');
+is(Store.getData().projects.length, 1, '案件が増えたりしない');
+
+throws(function () { Store.setAssignee(proj.id, '無い'); }, '担当者が見つかりません', '無い担当者の指定は拒否');
+is(Store.findProject(proj.id).assigneeId, sato.id, '拒否された後もデータは元のまま');
+
+Store.setAssignee(proj.id, miyachi.id); // 以降のテストのため宮地さんへ戻す
 
 /* ============================================================
  * 11. 担当者削除の制約（CLAUDE.md 5.8）
  * ============================================================ */
 group('担当者削除の制約');
 
-// いまは2名担当なので、片方は外せる
-is(Store.soleAssignedProjects(sato.id).length, 0, '佐藤さんが唯一の担当の案件は0件');
+// 佐藤さんは担当案件が無いので削除できる
+is(Store.assignedProjects(sato.id).length, 0, '佐藤さんの担当案件は0件');
 Store.removeMember(sato.id);
-is(Store.findMember(sato.id), null, '複数担当の案件しか無い担当者は削除できる');
-is(Store.findProject(proj.id).assigneeIds.length, 1, '削除された担当者は案件から外れる');
+is(Store.findMember(sato.id), null, '担当案件が無い担当者は削除できる');
 
-// 宮地さんは唯一の担当なので削除できない
-is(Store.soleAssignedProjects(miyachi.id).length, 1, '宮地さんが唯一の担当の案件は1件');
-throws(function () { Store.removeMember(miyachi.id); }, '唯一の担当', '唯一の担当者の削除は拒否');
+// 宮地さんは案件を担当しているので削除できない
+is(Store.assignedProjects(miyachi.id).length, 1, '宮地さんの担当案件は1件');
+throws(function () { Store.removeMember(miyachi.id); }, '担当している案件', '担当案件がある担当者の削除は拒否');
 throws(function () { Store.removeMember(miyachi.id); }, 'ABCフォーラム', '拒否メッセージに案件名が入る');
 is(Store.findMember(miyachi.id) !== null, true, '拒否された後も担当者は残る');
 
@@ -430,7 +429,7 @@ group('JSONの書き出し・読み込み');
 
 var json = Store.exportJson();
 var parsed = JSON.parse(json);
-is(parsed.dataVersion, 3, '書き出したJSONにdataVersionが入る');
+is(parsed.dataVersion, 4, '書き出したJSONにdataVersionが入る');
 is(parsed.departments.length, 1, '部署が書き出される');
 is(parsed.members.length, 1, '担当者が書き出される');
 is(parsed.projects.length, 1, '案件が書き出される');
@@ -458,11 +457,11 @@ var memberId = 'm1';
 
 function sample(overrides) {
   var base = {
-    dataVersion: 3,
+    dataVersion: 4,
     departments: [{ id: deptId, name: '制作', order: 1 }],
     members: [{ id: memberId, deptId: deptId, name: '宮地 太郎', order: 1 }],
     projects: [{
-      id: 'p1', title: 'テスト案件', assigneeIds: [memberId], hidden: false, order: 1,
+      id: 'p1', title: 'テスト案件', assigneeId: memberId, hidden: false, order: 1,
       bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '未着手', start: 4802, end: 4805 }]
     }]
   };
@@ -470,25 +469,25 @@ function sample(overrides) {
 }
 
 var m = Store.migrate(sample());
-is(m.dataVersion, 3, 'dataVersionが3になる');
+is(m.dataVersion, 4, 'dataVersionが4になる');
 is(m.members[0].countText, '', '省略された自由項目は空文字で補われる');
 is(m.members[0].emoji, '', 'emojiも空文字で補われる');
 is(m.projects[0].bars[0].clsCheck, false, '省略された囲い点線はOFFで補われる');
 is(m.projects[0].bars[0].markColor, 'default', '省略された文字色は既定色で補われる');
 
 // dataVersion 省略は現行版として扱う
-is(Store.migrate(sample({ dataVersion: undefined })).dataVersion, 3, 'dataVersion省略は現行版扱い');
+is(Store.migrate(sample({ dataVersion: undefined })).dataVersion, 4, 'dataVersion省略は現行版扱い');
 
 // 一覧に無い文字色は既定色に直す
 is(Store.migrate(sample({
-  projects: [{ id: 'p1', title: 'x', assigneeIds: [memberId], hidden: false, order: 1,
+  projects: [{ id: 'p1', title: 'x', assigneeId: memberId, hidden: false, order: 1,
     bars: [{ id: 'b1', stage: '入稿', stageNo: 1, status: '未着手', markColor: '青',
              start: 4802, end: 4803 }] }]
 })).projects[0].bars[0].markColor, 'default', '不明な文字色は既定色に直す');
 
 // バーの端の丸め
 var mm = Store.migrate(sample({
-  projects: [{ id: 'p1', title: 'ずれたバー', assigneeIds: [memberId], hidden: false, order: 1,
+  projects: [{ id: 'p1', title: 'ずれたバー', assigneeId: memberId, hidden: false, order: 1,
     bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '未着手', start: 4803, end: 4806 }] }]
 }));
 is(mm.projects[0].bars[0].start, 4802, '開始が午後だったら午前に丸める');
@@ -497,28 +496,28 @@ ok(Store.notes().length > 0, '自動修正した内容がnotesに残る');
 
 // 入稿の1日幅化
 var m1day = Store.migrate(sample({
-  projects: [{ id: 'p1', title: '入稿', assigneeIds: [memberId], hidden: false, order: 1,
+  projects: [{ id: 'p1', title: '入稿', assigneeId: memberId, hidden: false, order: 1,
     bars: [{ id: 'b1', stage: '入稿', stageNo: 1, status: '未着手', start: 4802, end: 4811 }] }]
 }));
 is(m1day.projects[0].bars[0].end, 4803, '入稿は読み込み時に1日幅へそろえる');
 
 // MTの1日幅化
 var mMt = Store.migrate(sample({
-  projects: [{ id: 'p1', title: 'MT', assigneeIds: [memberId], hidden: false, order: 1,
+  projects: [{ id: 'p1', title: 'MT', assigneeId: memberId, hidden: false, order: 1,
     bars: [{ id: 'b1', stage: 'MT', stageNo: 1, status: '未着手', start: 4802, end: 4821 }] }]
 }));
 is(mMt.projects[0].bars[0].end, 4803, 'MTも読み込み時に1日幅へそろえる');
 
 // 修正番号の範囲外
 var mNo = Store.migrate(sample({
-  projects: [{ id: 'p1', title: '修正', assigneeIds: [memberId], hidden: false, order: 1,
+  projects: [{ id: 'p1', title: '修正', assigneeId: memberId, hidden: false, order: 1,
     bars: [{ id: 'b1', stage: '修正', stageNo: 99, status: '50', start: 4802, end: 4805 }] }]
 }));
 is(mNo.projects[0].bars[0].stageNo, 1, '修正番号が範囲外なら1に補正');
 
 // hidden 省略
 var mHidden = Store.migrate(sample({
-  projects: [{ id: 'p1', title: 'x', assigneeIds: [memberId], order: 1,
+  projects: [{ id: 'p1', title: 'x', assigneeId: memberId, order: 1,
     bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '未着手', start: 4802, end: 4803 }] }]
 }));
 is(mHidden.projects[0].hidden, false, 'hidden省略はfalse扱い');
@@ -535,7 +534,7 @@ function sampleV1(bars) {
     departments: [{ id: deptId, name: '制作', order: 1 }],
     members: [{ id: memberId, deptId: deptId, name: '宮地 太郎', order: 1 }],
     projects: [{
-      id: 'p1', title: '旧データ', assigneeIds: [memberId], hidden: false, order: 1,
+      id: 'p1', title: '旧データ', assigneeId: memberId, hidden: false, order: 1,
       bars: bars
     }]
   };
@@ -549,7 +548,7 @@ var v1 = Store.migrate(sampleV1([
 ]));
 var v1bars = v1.projects[0].bars;
 
-is(v1.dataVersion, 3, '読み込むとdataVersionが3になる');
+is(v1.dataVersion, 4, '読み込むとdataVersionが4になる');
 is(v1bars[0].stage, '修正', '工程「再校」が「修正」になる');
 is(v1bars[0].stageNo, 3, '再校の番号3が修正3として引き継がれる');
 is(Store.barLabel(v1bars[0]), '修正3', 'ラベルが「修正3」になる');
@@ -592,12 +591,129 @@ var v2 = Store.migrate({
     ]
   }]
 });
-is(v2.dataVersion, 3, 'dataVersion 2 のデータは3になる');
+is(v2.dataVersion, 4, 'dataVersion 2 のデータは4になる');
 is(v2.projects[0].bars[0].markColor, 'default', 'markColorが無ければ既定色が入る');
 is(v2.projects[0].bars[1].markColor, 'default', '入稿にも既定色が入る');
 is(v2.projects[0].bars[0].clsCheck, true, 'v2で付けた囲い点線はそのまま残る');
 is(v2.projects[0].bars[0].stageNo, 2, 'v2の番号もそのまま残る');
-is(Store.notes().length, 0, 'v2→v3では自動修正の通知が出ない');
+is(v2.projects[0].assigneeId, memberId, 'assigneeIdsがassigneeIdに変換される');
+
+/* ============================================================
+ * 15-c. dataVersion 3 → 4 の変換（担当者の単一化 / CLAUDE.md 11 の v2.7）
+ * ============================================================ */
+group('migrate: dataVersion 3 からの変換（担当者の単一化）');
+
+var deptB = 'd2';
+var mA = 'mA', mB = 'mB', mC = 'mC';
+
+function sampleV3(projects, members) {
+  return {
+    dataVersion: 3,
+    departments: [{ id: deptId, name: '制作', order: 1 }, { id: deptB, name: '企画', order: 2 }],
+    members: members || [
+      { id: mA, deptId: deptId, name: '宮地 太郎', order: 1 },
+      { id: mB, deptId: deptId, name: '佐藤 花子', order: 2 },
+      { id: mC, deptId: deptB, name: '田中 一郎', order: 3 }
+    ],
+    projects: projects
+  };
+}
+
+/* ---- ① 担当1名の案件はそのまま引き継がれる ---- */
+var single = Store.migrate(sampleV3([{
+  id: 'p1', title: '単独担当の案件', assigneeIds: [mA], hidden: true, order: 3,
+  bars: [{ id: 'b1', stage: '修正', stageNo: 4, status: '制作中', clsCheck: true,
+           markColor: 'white', start: 4802, end: 4809 }]
+}]));
+
+is(single.dataVersion, 4, 'dataVersionが4になる');
+is(single.projects.length, 1, '担当1名の案件は1件のまま');
+is(single.projects[0].id, 'p1', '案件IDはそのまま引き継がれる');
+is(single.projects[0].assigneeId, mA, 'assigneeIdに担当者が入る');
+is(single.projects[0].assigneeIds, undefined, '古いassigneeIdsは残らない');
+is(single.projects[0].title, '単独担当の案件', 'タイトルはそのまま');
+is(single.projects[0].hidden, true, 'hiddenはそのまま');
+is(single.projects[0].order, 3, 'orderはそのまま');
+is(single.projects[0].bars.length, 1, 'バーの本数はそのまま');
+is(single.projects[0].bars[0].id, 'b1', 'バーIDもそのまま引き継がれる');
+is(single.projects[0].bars[0].stageNo, 4, '修正番号はそのまま');
+is(single.projects[0].bars[0].clsCheck, true, '囲い点線はそのまま');
+is(single.projects[0].bars[0].markColor, 'white', '文字色はそのまま');
+is(single.projects[0].bars[0].start, 4802, '開始日はそのまま');
+
+/* ---- ② 担当2名の案件は2件に分割され、互いに独立する ---- */
+var split = Store.migrate(sampleV3([{
+  id: 'p2', title: '共同担当の案件', assigneeIds: [mA, mB], hidden: false, order: 1,
+  bars: [
+    { id: 'b1', stage: 'ラフ', stageNo: 1, status: '25', start: 4802, end: 4805 },
+    { id: 'b2', stage: '入稿', stageNo: 1, status: '未着手', start: 4810, end: 4811 }
+  ]
+}]));
+
+is(split.projects.length, 2, '担当2名の案件は2件に分割される');
+is(split.projects[0].assigneeId, mA, '1件目は1人目の担当者');
+is(split.projects[1].assigneeId, mB, '2件目は2人目の担当者');
+is(split.projects[0].title, '共同担当の案件', '1件目のタイトルが複製される');
+is(split.projects[1].title, '共同担当の案件', '2件目のタイトルも同じ');
+is(split.projects[0].bars.length, 2, '1件目にバーが複製される');
+is(split.projects[1].bars.length, 2, '2件目にもバーが複製される');
+ok(split.projects[0].id !== split.projects[1].id, '2件の案件IDは別');
+ok(split.projects[0].bars[0].id !== split.projects[1].bars[0].id, 'バーIDも別');
+ok(split.projects[0].bars[1].id !== split.projects[1].bars[1].id, '2本目のバーIDも別');
+ok(Store.notes().length > 0, '分割したことがnotesに残る');
+
+// 片方のバーを編集しても、もう片方に影響しないこと（互いに独立）
+Store.setData(split);
+var pA = Store.getData().projects[0];
+var pB = Store.getData().projects[1];
+Store.updateBar(pA.id, pA.bars[0].id, { status: '75', startYmd: '2026-09-01', endYmd: '2026-09-03' });
+is(Store.findProject(pA.id).bars[0].status, '75', '1件目のバーの状態が変わる');
+is(Store.findProject(pB.id).bars[0].status, '25', '2件目のバーの状態は変わらない');
+is(Store.ymdTextFromSerial(Store.findProject(pB.id).bars[0].start), '2026-07-29',
+   '2件目のバーの日付も変わらない');
+
+// 片方の案件を消しても、もう片方は残る
+Store.removeProject(pA.id);
+is(Store.getData().projects.length, 1, '1件消すともう1件だけ残る');
+is(Store.findProject(pB.id) !== null, true, '残った案件は無事');
+
+/* ---- 担当3名なら3件に分かれる ---- */
+var split3 = Store.migrate(sampleV3([{
+  id: 'p3', title: '3名の案件', assigneeIds: [mA, mB, mC], hidden: false, order: 1,
+  bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '未着手', start: 4802, end: 4803 }]
+}]));
+is(split3.projects.length, 3, '担当3名の案件は3件に分割される');
+is(split3.projects.map(function (p) { return p.assigneeId; }).join(','), mA + ',' + mB + ',' + mC,
+   '3件がそれぞれの担当者に割り当てられる');
+
+/* ---- ③ 想定外の担当0名は先頭の担当者に割り当てて保全する ---- */
+var rescued = Store.migrate(sampleV3([{
+  id: 'p4', title: '担当0名の案件', assigneeIds: [], hidden: false, order: 1,
+  bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '未着手', start: 4802, end: 4803 }]
+}]));
+is(rescued.projects.length, 1, '担当0名でも案件は捨てられない');
+is(rescued.projects[0].assigneeId, mA, '先頭の担当者に割り当てられる');
+is(rescued.projects[0].title, '担当0名の案件', 'タイトルは保たれる');
+is(rescued.projects[0].bars.length, 1, 'バーも保たれる');
+ok(Store.notes().join('').indexOf('宮地 太郎') >= 0, '割り当て先がnotesに残る');
+
+// 担当者が1人もいなければ、さすがに割り当てられないので拒否する
+throws(function () {
+  Store.migrate({
+    dataVersion: 3,
+    departments: [{ id: deptId, name: '制作', order: 1 }],
+    members: [],
+    projects: [{ id: 'p5', title: 'x', assigneeIds: [], order: 1, bars: [] }]
+  });
+}, '割り当てられる担当者もいません', '担当者が0人なら拒否する');
+
+// 変換後のデータをもう一度読み込んでも変わらないこと
+var again4 = Store.migrate(JSON.stringify(split));
+is(again4.projects.length, 2, '変換後のデータを再度読み込んでも件数は変わらない');
+is(again4.projects[0].assigneeId, mA, '担当者も変わらない');
+is(Store.notes().length, 0, '2度目の読み込みでは分割の通知が出ない');
+
+Store.setData(Store.createEmptyData());
 
 group('migrate: 拒否する入力');
 
@@ -612,31 +728,41 @@ throws(function () {
 }, '存在しない部署', '存在しない部署を指す担当者は拒否');
 
 throws(function () {
-  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeIds: ['無い担当'], order: 1, bars: [] }] }));
+  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeId: '無い担当', order: 1, bars: [] }] }));
 }, '存在しない担当者', '存在しない担当者を指す案件は拒否');
 
 throws(function () {
-  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeIds: [], order: 1, bars: [] }] }));
-}, '担当者が1人もいません', '担当0名の案件は拒否');
+  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', order: 1, bars: [] }] }));
+}, '担当者がありません', '担当者の指定が無い案件は拒否');
+
+// 旧版（dataVersion 3）でも、存在しない担当者は拒否する
+throws(function () {
+  Store.migrate({
+    dataVersion: 3,
+    departments: [{ id: deptId, name: '制作', order: 1 }],
+    members: [{ id: memberId, deptId: deptId, name: '宮地 太郎', order: 1 }],
+    projects: [{ id: 'p1', title: 'x', assigneeIds: ['無い担当'], order: 1, bars: [] }]
+  });
+}, '存在しない担当者', '旧版でも存在しない担当者は拒否');
 
 throws(function () {
-  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeIds: [memberId], order: 1,
+  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeId: memberId, order: 1,
     bars: [{ id: 'b1', stage: '責了', stageNo: 1, status: '未着手', start: 4802, end: 4803 }] }] }));
 }, '不明な工程', '一覧に無い工程は拒否');
 
 throws(function () {
-  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeIds: [memberId], order: 1,
+  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeId: memberId, order: 1,
     bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '進行中', start: 4802, end: 4803 }] }] }));
 }, '不明な状態', '一覧に無い状態は拒否');
 
 // 名称の読み替えは dataVersion 1 のときだけ。2 のデータに旧名称があれば誤りとして拒否する
 throws(function () {
-  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeIds: [memberId], order: 1,
+  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeId: memberId, order: 1,
     bars: [{ id: 'b1', stage: '再校', stageNo: 1, status: '未着手', start: 4802, end: 4803 }] }] }));
 }, '不明な工程', 'dataVersion 2 のデータに「再校」があれば拒否');
 
 throws(function () {
-  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeIds: [memberId], order: 1,
+  Store.migrate(sample({ projects: [{ id: 'p1', title: 'x', assigneeId: memberId, order: 1,
     bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '完了', start: 4802, end: 4803 }] }] }));
 }, '不明な状態', 'dataVersion 2 のデータに「完了」があれば拒否');
 
