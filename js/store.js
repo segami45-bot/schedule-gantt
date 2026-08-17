@@ -165,6 +165,43 @@
     return dayIndexFromDate(new Date());
   }
 
+  /* ------------------------------------------------------------
+   * 営業日（CLAUDE.md 5.2 の［7営業日］用）
+   *
+   * 営業日 = 土曜・日曜・祝日を除いた日。
+   * 祝日の一覧（{ "YYYY-MM-DD": "祝日名" } の形）は呼び出し側から渡します。
+   * このファイルは定数ファイル（js/holidays.js）に依存しないでおくためです。
+   * 渡さなかった場合は「祝日なし」として扱います。
+   * ------------------------------------------------------------ */
+
+  function isBusinessDay(dayIndex, holidays) {
+    var dow = dateFromDayIndex(dayIndex).getDay(); // 0=日曜 … 6=土曜
+    if (dow === 0 || dow === 6) { return false; }
+    var map = holidays || {};
+    return !map[ymdTextFromDayIndex(dayIndex)];
+  }
+
+  /*
+   * 開始日から数えて count 営業日目にあたる日（通算日数）を返します。
+   * 開始日そのものが営業日なら、それを1営業日目として数えます。
+   * 土日・祝日が挟まるぶん、返る日は先へ伸びます。
+   * 開始日が土日祝でも開始日は動かしません（CLAUDE.md 5.2 は開始日=今日）。
+   * 探索は表示幅の上限（120日）までとし、それでも足りなければ最後に見つけた営業日を返します。
+   */
+  function businessDayEndIndex(startDayIndex, count, holidays) {
+    var found = 0;
+    var last = startDayIndex;
+    var limit = startDayIndex + MAX_DAY_COUNT - 1;
+    for (var day = startDayIndex; day <= limit; day++) {
+      if (isBusinessDay(day, holidays)) {
+        found++;
+        last = day;
+        if (found >= count) { break; }
+      }
+    }
+    return last;
+  }
+
   function todaySerial() {
     return serialFromDayIndex(todayDayIndex(), AM);
   }
@@ -1075,6 +1112,8 @@
     serialFromYmdText: serialFromYmdText,
     todayDayIndex: todayDayIndex,
     todaySerial: todaySerial,
+    isBusinessDay: isBusinessDay,
+    businessDayEndIndex: businessDayEndIndex,
     rangeFromDays: rangeFromDays,
     daysFromRange: daysFromRange,
     barDayCount: barDayCount,

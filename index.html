@@ -19,15 +19,19 @@
     <input type="date" id="rangeStart">
     <label class="toolbar__label" for="rangeEnd">終了</label>
     <input type="date" id="rangeEnd">
-    <button type="button" id="range7">7日</button>
+    <button type="button" id="range7">7営業日</button>
     <button type="button" id="range30">30日</button>
   </div>
 
-  <!-- 操作ボタン群（CLAUDE.md 5.1） -->
+  <!-- 操作ボタン群のうち左側（CLAUDE.md 5.1） -->
   <div class="toolbar__group">
     <button type="button" id="openSettings">設定</button>
     <!-- 非表示にした案件を半透明で出すトグル（CLAUDE.md 5.4） -->
     <button type="button" id="toggleHidden" aria-pressed="false">非表示を表示</button>
+  </div>
+
+  <!-- 入出力は画面右端に寄せる（CLAUDE.md 5.1） -->
+  <div class="toolbar__group toolbar__group--right">
     <button type="button" id="exportData">書き出し</button>
     <button type="button" id="importData">読み込み</button>
     <!-- 読み込み用のファイル選択。画面には出しません -->

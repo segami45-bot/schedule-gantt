@@ -55,9 +55,10 @@
   --mark-yukyu: #e08a8a;  /* 有休（うすい赤） */
   --mark-white: #ffffff;  /* 白（色付きバーに重なる場合用） */
 
-  /* ---- TW・有休の日ハイライト色（CLAUDE.md 6.4） ---- */
-  --day-tw:    #e6f2e6;  /* TW（薄緑） */
-  --day-yukyu: #fbe9e9;  /* 有休（うす赤） */
+  /* ---- 日ハイライト色（CLAUDE.md 6.4） ---- */
+  --day-tw:    #e6f2e6;        /* TW（薄緑） */
+  /* 有休は日曜・祝日の列背景色と常に同じ色にする（CLAUDE.md 6.4） */
+  --day-yukyu: var(--c-off);
 
   /* ---- 行の背景色（CLAUDE.md 6.3） ---- */
   --row-dept-bg:    #eef0f2;  /* 部署見出し行 */
@@ -111,6 +112,9 @@ body {
   align-items: center;
   gap: 6px;
 }
+
+/* ［書き出し］［読み込み］は画面右端に寄せる（CLAUDE.md 5.1） */
+.toolbar__group--right { margin-left: auto; }
 
 .toolbar__label {
   color: var(--c-text-sub);
@@ -620,8 +624,18 @@ body.is-dragging-modal { user-select: none; }
 
 .member__field:hover { background: #e7edf4; }
 
-/* 値が空の項目もクリックできるよう、薄いプレースホルダーを出す */
-.member__field.is-placeholder { color: #b9bdc2; }
+/*
+ * 値が空の項目のプレースホルダー（CLAUDE.md 5.13）。
+ * 常時は見せず、担当者ヘッダ行にポインタが乗っている間だけ薄いグレーで出します。
+ * 消すのは文字（opacity）だけなので、クリック領域と行の幅は動きません。
+ */
+.member__field.is-placeholder {
+  color: #b9bdc2;
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+
+.row--member:hover .member__field.is-placeholder { opacity: 1; }
 
 /* 絵文字はクリックできることが伝わるよう指カーソルにする */
 .member__emoji { cursor: pointer; }
@@ -798,7 +812,7 @@ body.is-dragging-modal { user-select: none; }
 /* ============================================================
  * TW・有休の日ハイライト（CLAUDE.md 5.12 / 6.4）
  * 案件行の中に敷く背景層。バーより後ろ、列色（.stripes）より前に来ます。
- * 今日の列は塗らないので、下の黄色がそのまま透けます。
+ * 今日・土日祝の列色より優先されます（CLAUDE.md 5.12 の優先順位）。
  * ============================================================ */
 .dayfill {
   position: absolute;

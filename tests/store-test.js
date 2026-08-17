@@ -157,6 +157,51 @@ is(Store.ymdTextFromSerial(Store.todaySerial()),
 is(Store.halfFromSerial(Store.todaySerial()), Store.AM, 'todaySerial は午前（偶数）');
 
 /* ============================================================
+ * 4-b. 営業日（CLAUDE.md 5.2 の［7営業日］）
+ * ============================================================ */
+group('営業日の判定と［7営業日］の終了日');
+
+var holidays = require('../js/holidays.js');
+
+// 2026-08-17(月)〜08-23(日) の週。08-11(火)は山の日
+is(Store.isBusinessDay(Store.dayIndexFromYmd(2026, 8, 17), holidays), true, '月曜は営業日');
+is(Store.isBusinessDay(Store.dayIndexFromYmd(2026, 8, 22), holidays), false, '土曜は営業日でない');
+is(Store.isBusinessDay(Store.dayIndexFromYmd(2026, 8, 23), holidays), false, '日曜は営業日でない');
+is(Store.isBusinessDay(Store.dayIndexFromYmd(2026, 8, 11), holidays), false, '祝日（山の日）は営業日でない');
+is(Store.isBusinessDay(Store.dayIndexFromYmd(2026, 8, 11), {}), true,
+   '祝日の一覧を渡さなければ平日として扱う');
+
+// 開始日自身が営業日なら1営業日目として数える（CLAUDE.md 5.2）
+function bizEnd(ymd, count, map) {
+  var from = Store.dayIndexFromYmdText(ymd);
+  return Store.ymdTextFromDayIndex(Store.businessDayEndIndex(from, count, map));
+}
+
+function bizWidth(ymd, count, map) {
+  var from = Store.dayIndexFromYmdText(ymd);
+  return Store.businessDayEndIndex(from, count, map) - from + 1;
+}
+
+is(bizEnd('2026-08-17', 1, holidays), '2026-08-17', '開始日が営業日なら1営業日目は開始日');
+is(bizEnd('2026-08-17', 5, holidays), '2026-08-21', '月曜から5営業日目は同じ週の金曜');
+is(bizEnd('2026-08-17', 7, holidays), '2026-08-25', '月曜から7営業日目は翌週の火曜');
+is(bizWidth('2026-08-17', 7, holidays), 9, '祝日が無ければ表示幅は9日');
+
+// 期間内に祝日があると幅が伸びる（2026-08-11 山の日）
+is(bizWidth('2026-08-10', 7, holidays), 10, '期間内に祝日が1日あると10日に伸びる');
+is(bizWidth('2026-08-10', 7, {}), 9, '同じ週でも祝日を数えなければ9日');
+
+// 9/21〜9/23 の3連休を含む週はさらに伸びる
+is(bizWidth('2026-09-18', 7, holidays), 14, '3連休を含むと14日に伸びる');
+
+// 開始日が土日祝でも開始日は動かさない（CLAUDE.md 5.2 は開始日=今日）
+is(bizEnd('2026-08-22', 1, holidays), '2026-08-24', '土曜開始なら1営業日目は翌月曜');
+ok(bizWidth('2026-08-22', 7, holidays) > 9, '土曜開始では幅が9日より広くなる');
+
+// 上限（120日）を超えて探し続けない
+ok(bizWidth('2026-08-17', 999, holidays) <= 120, '営業日が足りなくても120日で打ち切る');
+
+/* ============================================================
  * 5. 表示期間のクランプ（CLAUDE.md 5.2 / 1〜120日）
  * ============================================================ */
 group('表示期間のクランプ');

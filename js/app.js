@@ -87,6 +87,23 @@
     });
   }
 
+  /*
+   * ［7営業日］（CLAUDE.md 5.2）。
+   * 今日を先頭に、今日から数えて7営業日目（土日・祝日を除く）までを表示します。
+   * 幅は通常9日で、期間内に祝日があるとその分だけ伸びます。
+   */
+  var BUSINESS_DAY_COUNT = 7;
+
+  function setBusinessDayPreset() {
+    var startIdx = Store.todayDayIndex();
+    var endIdx = Store.businessDayEndIndex(startIdx, BUSINESS_DAY_COUNT, SGANTT_HOLIDAYS);
+    applyView({
+      startSerial: Store.serialFromDayIndex(startIdx, Store.AM),
+      dayCount: Store.clampDayCount(endIdx - startIdx + 1),
+      showHidden: view.showHidden
+    });
+  }
+
   // 「非表示を表示」トグル（CLAUDE.md 5.4）
   function toggleHidden() {
     applyView({
@@ -195,8 +212,8 @@
 
     el.start.addEventListener('change', onRangeInput);
     el.end.addEventListener('change', onRangeInput);
-    // ［7日］: 今日を先頭に7日間 / ［30日］: 今日の7日前から30日間（CLAUDE.md 5.2）
-    el.btn7.addEventListener('click', function () { setPreset(0, 7); });
+    // ［7営業日］: 今日から営業日7日目まで / ［30日］: 今日の7日前から30日間（CLAUDE.md 5.2）
+    el.btn7.addEventListener('click', setBusinessDayPreset);
     el.btn30.addEventListener('click', function () { setPreset(Store.DEFAULT_BACK_DAYS, 30); });
     el.toggleHidden.addEventListener('click', toggleHidden);
     el.openSettings.addEventListener('click', Popup.openSettings);

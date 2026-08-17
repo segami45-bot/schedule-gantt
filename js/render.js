@@ -502,8 +502,8 @@ var Render = (function () {
 
   /*
    * 案件行に敷くセル背景の層を作ります。
-   * 色は1色のみ（重ね塗りしない）。優先順位は 今日 ＞ 有休 ＞ TW ＞ 土日祝。
-   * 今日の列は黄色を活かすため塗らず、下の列色（.stripes）を透かせます。
+   * 色は1色のみ（重ね塗りしない）。優先順位は 有休 ＞ TW ＞ 今日 ＞ 土日祝（CLAUDE.md 5.12）。
+   * この層は列色（.stripes）より前面にあるので、塗った日は今日の黄色や土日祝の色を隠します。
    * 塗る日が1日も無ければ null を返し、余分な要素を作りません。
    */
   function buildDayFill(days, mark) {
@@ -514,15 +514,13 @@ var Render = (function () {
 
     days.forEach(function (info) {
       var cell = el('div', 'dayfill__cell');
-      if (!info.isToday) {
-        // 同じ日にTWと有休が重なったら有休を優先（CLAUDE.md 5.12）
-        if (mark.yukyu[info.dayIndex]) {
-          cell.className += ' is-yukyu';
-          painted = true;
-        } else if (mark.tw[info.dayIndex]) {
-          cell.className += ' is-tw';
-          painted = true;
-        }
+      // 同じ日にTWと有休が重なったら有休を優先（CLAUDE.md 5.12）
+      if (mark.yukyu[info.dayIndex]) {
+        cell.className += ' is-yukyu';
+        painted = true;
+      } else if (mark.tw[info.dayIndex]) {
+        cell.className += ' is-tw';
+        painted = true;
       }
       layer.appendChild(cell);
     });
