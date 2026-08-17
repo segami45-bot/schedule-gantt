@@ -52,6 +52,12 @@
    */
   var ONE_DAY_STAGES = ['MT', '入稿', '納品', 'TW', '有休'];
 
+  /*
+   * MT だけは文字ラベルも描かず、案件行のセル背景で表します（CLAUDE.md 5.12）。
+   * そのため markColor（文字色）を使いません（値は保持します）。
+   */
+  var MT_STAGE = 'MT';
+
   // 番号（1〜20）を持つのは「修正」のときだけ（CLAUDE.md 4.3）
   var NUMBERED_STAGE = '修正';
   var MIN_STAGE_NO = 1;
@@ -879,10 +885,15 @@
    * 案件・バーの CRUD（CLAUDE.md 5.5〜5.7）
    * ============================================================ */
 
-  // バー1本を作る。初期値は 工程「ラフ」・状態「未着手」・囲い点線なし・今日1日（CLAUDE.md 5.6）
-  function createBar() {
-    var today = todayDayIndex();
-    var range = rangeFromDays(today, today);
+  /*
+   * バー1本を作る。初期値は 工程「ラフ」・状態「未着手」・囲い点線なし・1日幅（CLAUDE.md 5.6）。
+   * startDayIndex を渡すとその日を開始日にします（案件行の空白セルのクリック / CLAUDE.md 5.5）。
+   * 省略すると今日1日になります。
+   */
+  function createBar(startDayIndex) {
+    var day = Math.floor(Number(startDayIndex));
+    if (!isFinite(day)) { day = todayDayIndex(); }
+    var range = rangeFromDays(day, day);
     return {
       id: newId(),
       stage: DEFAULT_STAGE,
@@ -954,9 +965,10 @@
     return true;
   }
 
-  function addBar(projectId) {
+  // startDayIndex を渡すとその日を開始日にする（CLAUDE.md 5.5 の空白セルのクリック）
+  function addBar(projectId, startDayIndex) {
     var project = needProject(projectId);
-    var bar = createBar();
+    var bar = createBar(startDayIndex);
     project.bars.push(bar);
     saveData();
     return bar;
@@ -1094,6 +1106,7 @@
     DEFAULT_DAY_COUNT: DEFAULT_DAY_COUNT,
     STAGES: STAGES,
     ONE_DAY_STAGES: ONE_DAY_STAGES,
+    MT_STAGE: MT_STAGE,
     NUMBERED_STAGE: NUMBERED_STAGE,
     MIN_STAGE_NO: MIN_STAGE_NO,
     MAX_STAGE_NO: MAX_STAGE_NO,

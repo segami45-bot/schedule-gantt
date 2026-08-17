@@ -365,6 +365,21 @@ var bar = Store.addBar(proj.id);
 is(Store.findProject(proj.id).bars.length, 2, 'バーを追加できる');
 is(bar.stage, 'ラフ', '追加したバーの初期工程はラフ');
 
+// 開始日を指定して追加できる（CLAUDE.md 5.5 の空白セルのクリック）
+var cellBar = Store.addBar(proj.id, Store.dayIndexFromYmd(2026, 9, 15));
+is(Store.ymdTextFromSerial(cellBar.start), '2026-09-15', '指定した日が開始日になる');
+is(Store.barDayCount(cellBar), 1, '指定して作ったバーも1日幅');
+is(cellBar.stage, 'ラフ', '空白セルから作ったバーの工程はラフ');
+is(cellBar.status, '未着手', '空白セルから作ったバーの状態は未着手');
+is(cellBar.clsCheck, false, '空白セルから作ったバーの囲い点線はOFF');
+Store.removeBar(proj.id, cellBar.id);
+
+// 開始日を渡さなければ今日1日のまま
+is(Store.dayIndexFromSerial(Store.addBar(proj.id).start), Store.todayDayIndex(),
+   '開始日を渡さなければ今日から始まる');
+Store.removeBar(proj.id, Store.findProject(proj.id).bars[2].id);
+is(Store.findProject(proj.id).bars.length, 2, '確認用に追加したバーを片付けた');
+
 Store.updateBar(proj.id, bar.id, { stage: '修正', stageNo: 3, status: '50',
                                    startYmd: '2026-07-29', endYmd: '2026-07-30' });
 var updated = Store.findProject(proj.id).bars[1];

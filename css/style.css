@@ -47,8 +47,8 @@
   /* 凡例に出す囲い点線の見本の色（塗りなし・グレー） */
   --legend-cls-line: #8a9096;
 
-  /* ---- 文字ラベル工程の既定の文字色（CLAUDE.md 6.2） ---- */
-  --mark-mt:    #6b7176;  /* MT（グレー） */
+  /* ---- 文字ラベル工程の既定の文字色（CLAUDE.md 6.2） ----
+   * MT はここに入りません（文字を描かずセル背景で表すため。色は --day-mt / CLAUDE.md 6.4） */
   --mark-nohin: #6b7176;  /* 納品（グレー） */
   --mark-nyuko: #c0392b;  /* 入稿（赤） */
   --mark-tw:    #7cb87c;  /* TW（薄い緑） */
@@ -56,6 +56,8 @@
   --mark-white: #ffffff;  /* 白（色付きバーに重なる場合用） */
 
   /* ---- 日ハイライト色（CLAUDE.md 6.4） ---- */
+  --day-mt:      #f3f5f4;      /* MT（枠なし。案件行の背景と同じ色） */
+  --day-mt-line: #6b7176;      /* MT の凡例の見本だけに付ける枠線 */
   --day-tw:    #e6f2e6;        /* TW（薄緑） */
   /* 有休は日曜・祝日の列背景色と常に同じ色にする（CLAUDE.md 6.4） */
   --day-yukyu: var(--c-off);
@@ -438,7 +440,6 @@ body.is-dragging-modal { user-select: none; }
 }
 
 /* 文字ラベル工程の文字色を選ぶ見本（CLAUDE.md 6.2） */
-.mark-sw--mt    { background: var(--mark-mt); }
 .mark-sw--nohin { background: var(--mark-nohin); }
 .mark-sw--nyuko { background: var(--mark-nyuko); }
 .mark-sw--tw    { background: var(--mark-tw); }
@@ -524,6 +525,12 @@ body.is-dragging-modal { user-select: none; }
 .legend__swatch--cls {
   background: none;
   border: 2px dashed var(--legend-cls-line);
+}
+
+/* MT の見本（CLAUDE.md 5.1 / 6.4）。実際のセルには枠線を付けず、見本だけ枠線で示す */
+.legend__swatch--mt {
+  background: var(--day-mt);
+  border: 1px solid var(--day-mt-line);
 }
 
 .legend__label {
@@ -910,12 +917,23 @@ body.is-resizing-bar .bar { cursor: ew-resize; }
   white-space: nowrap;
 }
 
-.mark--mt    { color: var(--mark-mt); }
 .mark--nyuko { color: var(--mark-nyuko); }
 .mark--nohin { color: var(--mark-nohin); }
 .mark--tw    { color: var(--mark-tw); }
 .mark--yukyu { color: var(--mark-yukyu); }
 .mark--white { color: var(--mark-white); }
+
+/* ---- MT はセル背景で表す（CLAUDE.md 5.12 / 6.4） ----
+ * 文字は持たず、案件行のセル1つぶんを塗ります。行の上下いっぱいまで広げるので
+ * ふつうのバー（上下3pxあき）とは違って見えます。
+ * クリック（5.11）とドラッグ移動の当たり判定はバーのまま残ります。 */
+.bar--mtcell {
+  top: 0;
+  bottom: 0;
+  padding: 0;
+  background: var(--day-mt);
+  border-radius: 0;
+}
 
 /* ============================================================
  * 列の色分け（CLAUDE.md 5.3 ／ 土曜のみ水色に変更）

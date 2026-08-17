@@ -487,8 +487,10 @@ var Popup = (function () {
     if (ctx.isNew) { row.className += ' is-new'; }
     var projectId = ctx.projectId;
     var run = ctx.run;
-    // MT・入稿・納品は色を持たず、常に1日（CLAUDE.md 5.5 / 5.6）
+    // 文字ラベル工程は色を持たず、常に1日（CLAUDE.md 5.5 / 5.6）
     var hasBar = Store.hasBar(bar.stage);
+    // MT はセル背景で表すので、文字色の2択も出しません（CLAUDE.md 5.6 / 5.12）
+    var isMt = bar.stage === Store.MT_STAGE;
 
     // 工程セレクト
     var stage = el('select', 'barrow__stage');
@@ -563,9 +565,12 @@ var Popup = (function () {
       clsLabel.appendChild(clsCheck);
       clsLabel.appendChild(el('span', null, '確認中'));
       row.appendChild(clsLabel);
+    } else if (isMt) {
+      // MT は文字も色も持たず、セル背景だけで表します（CLAUDE.md 5.12）
+      row.appendChild(el('span', 'barrow__note', 'セル背景・1日'));
     } else {
       /*
-       * MT・入稿・納品は文字だけの表示。
+       * 入稿・納品・TW・有休は文字だけの表示。
        * 色付きバーに重なったときに読めるよう、既定色と白から選べます（CLAUDE.md 6.2）。
        */
       row.appendChild(el('span', 'barrow__note', '文字のみ・1日'));
@@ -899,7 +904,11 @@ var Popup = (function () {
     if (!anchor) { return; }
 
     var rect = barDialog.getBoundingClientRect();
-    var from = anchor.getBoundingClientRect();
+    /*
+     * anchor はクリックされたバーの要素、または
+     * 空白セルのクリック時に render.js が渡す位置（同じ形のオブジェクト / CLAUDE.md 5.5）。
+     */
+    var from = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
     var gap = 8;
 
     // まずバーの下、入らなければ上に置く
@@ -910,6 +919,24 @@ var Popup = (function () {
     barDialog.style.margin = '0';
     barDialog.style.left = Math.min(Math.max(left, 0), Math.max(0, window.innerWidth - rect.width)) + 'px';
     barDialog.style.top = Math.min(Math.max(top, 0), Math.max(0, window.innerHeight - rect.height)) + 'px';
+  }
+
+  /*
+   * 案件行の空白セルのクリックから呼ばれる（CLAUDE.md 5.5 / 5.11）。
+   * そのセルの日付を開始日（1日幅）とする新規バーを作り、そのまま 5.11 を開きます。
+   * 初期値は［バーを追加］と同じ（ラフ・未着手・囲いなし）。
+   * 押し間違えたときは［このバーを削除］で元に戻せます。
+   */
+  function addBarAt(projectId, dayIndex, anchor) {
+    var bar = null;
+    try {
+      bar = Store.addBar(projectId, dayIndex);
+    } catch (e) {
+      window.alert(e.message);
+      return;
+    }
+    if (onChange) { onChange(); } // 先にガントを描き直してからポップアップを出す
+    openBar(projectId, bar.id, anchor);
   }
 
   // バーのクリックから呼ばれる（CLAUDE.md 5.11）
@@ -1112,6 +1139,7 @@ var Popup = (function () {
     openSettings: openSettings,
     openProject: openProject,
     openBar: openBar,
+    addBarAt: addBarAt,
     editMemberField: editMemberField,
     addProject: addProject
   };

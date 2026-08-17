@@ -19,9 +19,11 @@ var Render = (function () {
     '75': 'p75'
   };
 
-  // 文字ラベル工程（CLAUDE.md 3）→ CSSクラス名。既定の文字色は工程ごとに固定（CLAUDE.md 6.2）
+  /*
+   * 文字ラベル工程（CLAUDE.md 3）→ CSSクラス名。既定の文字色は工程ごとに固定（CLAUDE.md 6.2）。
+   * MT は文字ラベルを描かずセル背景で表すため、ここには入れません（CLAUDE.md 5.12）。
+   */
   var MARK_KEYS = {
-    'MT': 'mt',
     '入稿': 'nyuko',
     '納品': 'nohin',
     'TW': 'tw',
@@ -144,6 +146,35 @@ var Render = (function () {
     };
   }
 
+  /*
+   * 案件行のどのセル（日）がクリックされたかを求めます（CLAUDE.md 5.5 の空白セルのクリック）。
+   * 5.11 のポップアップをそのセルの近くに出すため、画面上の位置もあわせて返します。
+   * 列幅は画面に応じて伸び縮みするので、そのつど実測します。
+   */
+  function cellFromClick(rowNode, clientX, viewStartDay, dayCount) {
+    var rect = rowNode.getBoundingClientRect();
+    if (rect.width <= 0 || dayCount <= 0) { return null; }
+
+    var colWidth = rect.width / dayCount;
+    var col = Math.floor((clientX - rect.left) / colWidth);
+    if (col < 0) { col = 0; }
+    if (col > dayCount - 1) { col = dayCount - 1; }
+
+    var left = rect.left + col * colWidth;
+    return {
+      dayIndex: viewStartDay + col,
+      // getBoundingClientRect() と同じ形にしておき、ポップアップ側で同じように扱えるようにする
+      rect: {
+        left: left,
+        right: left + colWidth,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: colWidth,
+        height: rect.height
+      }
+    };
+  }
+
   function barGeometry(bar, viewStartDay, dayCount) {
     return geometryFromDays(
       Store.dayIndexFromSerial(bar.start),
@@ -164,6 +195,13 @@ var Render = (function () {
       node = el('div', 'bar bar--' + statusKey, Store.barLabel(bar));
       // 囲い点線 = CL&S確認中（CLAUDE.md 5.5）
       if (bar.clsCheck) { node.className += ' is-cls'; }
+    } else if (bar.stage === Store.MT_STAGE) {
+      /*
+       * MT は文字ラベルを描かず、その案件行の該当日セルに背景色を敷く（CLAUDE.md 5.12）。
+       * バーとしての当たり判定（クリック＝5.11 / ドラッグ移動）はそのまま残すため、
+       * 中身のない1日幅のバーとして置き、CSSでセル全体を塗ります。
+       */
+      node = el('div', 'bar bar--mtcell');
     } else {
       /*
        * 文字ラベル工程はバーを描かず文字ラベルのみ（CLAUDE.md 5.5）。
@@ -618,8 +656,16 @@ var Render = (function () {
     var fill = buildDayFill(days, marks[row.member.id]);
     if (fill) { node.appendChild(fill); }
 
-    // 開始日順に描き、重なった部分は後のバーが前面になる（CLAUDE.md 5.5）
-    var bars = row.project.bars.slice().sort(function (a, b) { return a.start - b.start; });
+    /*
+     * 開始日順に描き、重なった部分は後のバーが前面になる（CLAUDE.md 5.5）。
+     * MT はセル背景なので必ず先に描き、他のバーを前面に出します（CLAUDE.md 5.12）。
+     */
+    var bars = row.project.bars.slice().sort(function (a, b) {
+      var aMt = a.stage === Store.MT_STAGE ? 0 : 1;
+      var bMt = b.stage === Store.MT_STAGE ? 0 : 1;
+      if (aMt !== bMt) { return aMt - bMt; }
+      return a.start - b.start;
+    });
     bars.forEach(function (bar) {
       var barNode = buildBar(bar, viewStartDay, dayCount, row.project);
       if (barNode) { node.appendChild(barNode); }
@@ -634,7 +680,9 @@ var Render = (function () {
    * view: { startSerial, dayCount }
    * options:
    *   showHidden     … 非表示の案件も出すか（CLAUDE.md 5.4）
-   *   onOpenProject  … 案件行・バーがクリックされたとき（CLAUDE.md 5.6）
+   *   onOpenProject  … 行ラベルがクリックされたとき（CLAUDE.md 5.6）
+   *   onOpenBar      … バーがクリックされたとき（CLAUDE.md 5.11）
+   *   onCreateBarAt  … 案件行の空白セルがクリックされたとき（CLAUDE.md 5.5）
    *   onAddProject   … 担当者ヘッダの「＋」が押されたとき（CLAUDE.md 5.7）
    *   onBarChange    … バーのドラッグ移動が確定したとき（CLAUDE.md 5.10）
    * ============================================================ */
@@ -656,11 +704,26 @@ var Render = (function () {
     // 担当者ヘッダ項目の直接編集（CLAUDE.md 5.13）
     memberEditor = opts.onEditMemberField || null;
 
-    // 案件行・バーのクリックで編集ポップアップを開く（CLAUDE.md 5.6）
-    function makeClickable(node, project) {
+    // 行ラベル（📝タイトル部分）のクリックで案件ポップアップを開く（CLAUDE.md 5.6）
+    function makeLabelClickable(node, project) {
       if (!opts.onOpenProject) { return; }
       node.classList.add('is-clickable');
       node.addEventListener('click', function () { opts.onOpenProject(project.id); });
+    }
+
+    /*
+     * 案件行（グリッド側）の空白セルのクリックで、
+     * そのセルの日付を開始日とする新規バーを作り 5.11 を開く（CLAUDE.md 5.5）。
+     * バーの上のクリックはバー側で止めているので、ここには届きません。
+     */
+    function makeCellClickable(node, project) {
+      if (!opts.onCreateBarAt) { return; }
+      node.classList.add('is-clickable');
+      node.addEventListener('click', function (e) {
+        var hit = cellFromClick(node, e.clientX, viewStartDay, view.dayCount);
+        if (!hit) { return; }
+        opts.onCreateBarAt(project.id, hit.dayIndex, hit.rect);
+      });
     }
 
     root.innerHTML = '';
@@ -677,7 +740,7 @@ var Render = (function () {
     } else {
       rows.forEach(function (row) {
         var node = buildLabelRow(row, opts);
-        if (row.kind === 'project') { makeClickable(node, row.project); }
+        if (row.kind === 'project') { makeLabelClickable(node, row.project); }
         labelBody.appendChild(node);
       });
     }
@@ -694,7 +757,7 @@ var Render = (function () {
     var rowsNode = el('div', 'rows');       // 行とバー（前面）
     rows.forEach(function (row) {
       var node = buildGridRow(row, days, viewStartDay, view.dayCount, dayMarks);
-      if (row.kind === 'project') { makeClickable(node, row.project); }
+      if (row.kind === 'project') { makeCellClickable(node, row.project); }
       rowsNode.appendChild(node);
     });
     body.appendChild(rowsNode);
@@ -732,6 +795,15 @@ var Render = (function () {
     cls.appendChild(el('span', 'legend__swatch legend__swatch--cls'));
     cls.appendChild(el('span', 'legend__label', 'CL&S確認中'));
     root.appendChild(cls);
+
+    /*
+     * MT の見本（CLAUDE.md 5.1 / 6.4）。
+     * MT は文字を持たずセル背景だけで表すため、凡例では色が分かるよう枠線を付けます。
+     */
+    var mt = el('span', 'legend__item legend__item--sep');
+    mt.appendChild(el('span', 'legend__swatch legend__swatch--mt'));
+    mt.appendChild(el('span', 'legend__label', 'MT'));
+    root.appendChild(mt);
   }
 
   return {

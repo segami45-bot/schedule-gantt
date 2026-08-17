@@ -32,10 +32,12 @@
   function redraw() {
     Render.draw(el.gantt, view, {
       showHidden: view.showHidden,
-      // 行ラベル・案件行の空白部分のクリックで案件ポップアップ（CLAUDE.md 5.6）
+      // 行ラベルのクリックで案件ポップアップ（CLAUDE.md 5.6）
       onOpenProject: Popup.openProject,
       // バーのクリックで工程バー個別ポップアップ（CLAUDE.md 5.11）
       onOpenBar: Popup.openBar,
+      // 案件行の空白セルのクリックで、その日のバーを作って 5.11 を開く（CLAUDE.md 5.5）
+      onCreateBarAt: Popup.addBarAt,
       // 担当者ヘッダの案件数・絵文字・一言をその場で編集（CLAUDE.md 5.13）
       onEditMemberField: Popup.editMemberField,
       // 担当者ヘッダの「＋」で新規案件（CLAUDE.md 5.7）
