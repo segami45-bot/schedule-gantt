@@ -34,7 +34,7 @@
   var DATA_KEY = 'sgantt.data'; // データ本体の保存キー（CLAUDE.md 5.9）
   var VIEW_KEY = 'sgantt.view'; // 表示状態の保存キー（CLAUDE.md 5.9）
 
-  var DATA_VERSION = 4; // 現在のデータ構造の版（CLAUDE.md 4.2）
+  var DATA_VERSION = 5; // 現在のデータ構造の版（CLAUDE.md 4.2）
 
   var MIN_DAY_COUNT = 1;   // 表示幅の下限（CLAUDE.md 5.2）
   var MAX_DAY_COUNT = 120; // 表示幅の上限（CLAUDE.md 5.2）
@@ -438,6 +438,8 @@
      *   2 → 3: バーに markColor を追加（省略時は既定色になるため、個別の処理は不要）
      *   3 → 4: 担当者を単一化。assigneeIds（配列）→ assigneeId（1名）。
      *          担当2名以上の案件は人数分の独立した案件に分割する（案件の項で行う）
+     *   4 → 5: 案件に note（制作メモ）を追加。
+     *          省略されていれば空文字で補うため、個別の処理は要りません（案件の項で行う）
      */
 
     if (!Array.isArray(raw.departments) || !Array.isArray(raw.members) ||
@@ -546,6 +548,8 @@
         projects.push({
           id: !isCopy && typeof p.id === 'string' && p.id ? p.id : newId(),
           title: title,
+          // 制作メモ（CLAUDE.md 4.3）。dataVersion 4 以前のデータには無いので空文字で補う
+          note: freeText(p.note),
           assigneeId: memberId,
           hidden: p.hidden === true,
           order: order,
@@ -900,6 +904,7 @@
     var project = {
       id: newId(),
       title: '',
+      note: '',
       assigneeId: memberId,
       hidden: false,
       order: nextOrder(data.projects),
@@ -910,11 +915,13 @@
     return project;
   }
 
-  // 案件のタイトル・非表示を更新する
+  // 案件のタイトル・制作メモ・非表示を更新する
   function updateProject(id, patch) {
     var project = needProject(id);
     var p = patch || {};
     if (p.title !== undefined) { project.title = freeText(p.title); }
+    // 制作メモは自由記入で空でもよい（CLAUDE.md 4.3 / 5.6）
+    if (p.note !== undefined) { project.note = freeText(p.note); }
     if (p.hidden !== undefined) { project.hidden = p.hidden === true; }
     saveData();
     return project;

@@ -493,7 +493,7 @@ group('JSONの書き出し・読み込み');
 
 var json = Store.exportJson();
 var parsed = JSON.parse(json);
-is(parsed.dataVersion, 4, '書き出したJSONにdataVersionが入る');
+is(parsed.dataVersion, 5, '書き出したJSONにdataVersionが入る');
 is(parsed.departments.length, 1, '部署が書き出される');
 is(parsed.members.length, 1, '担当者が書き出される');
 is(parsed.projects.length, 1, '案件が書き出される');
@@ -533,14 +533,14 @@ function sample(overrides) {
 }
 
 var m = Store.migrate(sample());
-is(m.dataVersion, 4, 'dataVersionが4になる');
+is(m.dataVersion, 5, 'dataVersionが5になる');
 is(m.members[0].countText, '', '省略された自由項目は空文字で補われる');
 is(m.members[0].emoji, '', 'emojiも空文字で補われる');
 is(m.projects[0].bars[0].clsCheck, false, '省略された囲い点線はOFFで補われる');
 is(m.projects[0].bars[0].markColor, 'default', '省略された文字色は既定色で補われる');
 
 // dataVersion 省略は現行版として扱う
-is(Store.migrate(sample({ dataVersion: undefined })).dataVersion, 4, 'dataVersion省略は現行版扱い');
+is(Store.migrate(sample({ dataVersion: undefined })).dataVersion, 5, 'dataVersion省略は現行版扱い');
 
 // 一覧に無い文字色は既定色に直す
 is(Store.migrate(sample({
@@ -612,7 +612,7 @@ var v1 = Store.migrate(sampleV1([
 ]));
 var v1bars = v1.projects[0].bars;
 
-is(v1.dataVersion, 4, '読み込むとdataVersionが4になる');
+is(v1.dataVersion, 5, '読み込むとdataVersionが5になる');
 is(v1bars[0].stage, '修正', '工程「再校」が「修正」になる');
 is(v1bars[0].stageNo, 3, '再校の番号3が修正3として引き継がれる');
 is(Store.barLabel(v1bars[0]), '修正3', 'ラベルが「修正3」になる');
@@ -655,7 +655,7 @@ var v2 = Store.migrate({
     ]
   }]
 });
-is(v2.dataVersion, 4, 'dataVersion 2 のデータは4になる');
+is(v2.dataVersion, 5, 'dataVersion 2 のデータは5になる');
 is(v2.projects[0].bars[0].markColor, 'default', 'markColorが無ければ既定色が入る');
 is(v2.projects[0].bars[1].markColor, 'default', '入稿にも既定色が入る');
 is(v2.projects[0].bars[0].clsCheck, true, 'v2で付けた囲い点線はそのまま残る');
@@ -690,7 +690,7 @@ var single = Store.migrate(sampleV3([{
            markColor: 'white', start: 4802, end: 4809 }]
 }]));
 
-is(single.dataVersion, 4, 'dataVersionが4になる');
+is(single.dataVersion, 5, 'dataVersionが5になる');
 is(single.projects.length, 1, '担当1名の案件は1件のまま');
 is(single.projects[0].id, 'p1', '案件IDはそのまま引き継がれる');
 is(single.projects[0].assigneeId, mA, 'assigneeIdに担当者が入る');
@@ -776,6 +776,76 @@ var again4 = Store.migrate(JSON.stringify(split));
 is(again4.projects.length, 2, '変換後のデータを再度読み込んでも件数は変わらない');
 is(again4.projects[0].assigneeId, mA, '担当者も変わらない');
 is(Store.notes().length, 0, '2度目の読み込みでは分割の通知が出ない');
+
+/* ============================================================
+ * 15-d. dataVersion 4 → 5 の変換（制作メモ note の追加 / CLAUDE.md 11 の v2.13）
+ * ============================================================ */
+group('migrate: dataVersion 4 からの変換（制作メモ note の追加）');
+
+var v4 = Store.migrate({
+  dataVersion: 4,
+  departments: [{ id: deptId, name: '制作', order: 1 }],
+  members: [{ id: memberId, deptId: deptId, name: '宮地 太郎', order: 1 }],
+  projects: [
+    { id: 'p1', title: 'v4の案件', assigneeId: memberId, hidden: false, order: 1,
+      bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '未着手', start: 4802, end: 4805 }] },
+    { id: 'p2', title: 'v4の案件2', assigneeId: memberId, hidden: true, order: 2, bars: [] }
+  ]
+});
+is(v4.dataVersion, 5, 'dataVersion 4 のデータは5になる');
+is(v4.projects[0].note, '', 'note が無い案件には空文字が付く');
+is(v4.projects[1].note, '', '2件目にも空文字が付く');
+is(v4.projects[0].title, 'v4の案件', 'タイトルは変わらない');
+is(v4.projects[0].bars[0].start, 4802, 'バーも変わらない');
+is(Store.notes().length, 0, 'note の付与では通知を出さない（黙って補う）');
+
+// note が入っているデータはそのまま保たれる
+var withNote = Store.migrate({
+  dataVersion: 5,
+  departments: [{ id: deptId, name: '制作', order: 1 }],
+  members: [{ id: memberId, deptId: deptId, name: '宮地 太郎', order: 1 }],
+  projects: [{ id: 'p1', title: 'x', note: 'A4・8P／◯◯印刷', assigneeId: memberId,
+               hidden: false, order: 1, bars: [] }]
+});
+is(withNote.projects[0].note, 'A4・8P／◯◯印刷', 'note はそのまま引き継がれる');
+
+// 文字列でない note は空文字にそろえる
+is(Store.migrate({
+  dataVersion: 5,
+  departments: [{ id: deptId, name: '制作', order: 1 }],
+  members: [{ id: memberId, deptId: deptId, name: '宮地 太郎', order: 1 }],
+  projects: [{ id: 'p1', title: 'x', note: 123, assigneeId: memberId, order: 1, bars: [] }]
+}).projects[0].note, '', '文字列でない note は空文字にそろえる');
+
+// 旧版（dataVersion 3 以前）から一気に上げても note が付く
+is(Store.migrate(sampleV3([{
+  id: 'p9', title: '旧版の案件', assigneeIds: [mA, mB], hidden: false, order: 1,
+  bars: [{ id: 'b1', stage: 'ラフ', stageNo: 1, status: '未着手', start: 4802, end: 4803 }]
+}])).projects[1].note, '', '分割された案件にも note が付く');
+
+/* ---- 案件の CRUD 側でも note を扱えること（CLAUDE.md 5.6） ---- */
+group('制作メモの追加・更新');
+
+Store.setData(Store.createEmptyData());
+var noteDept = Store.addDepartment('制作');
+var noteMember = Store.addMember(noteDept.id, '宮地 太郎');
+var noteProj = Store.addProject(noteMember.id);
+
+is(noteProj.note, '', '新規案件の制作メモは空文字');
+Store.updateProject(noteProj.id, { note: 'A4・8P／◯◯印刷' });
+is(Store.findProject(noteProj.id).note, 'A4・8P／◯◯印刷', '制作メモを入力できる');
+Store.updateProject(noteProj.id, { title: '案件名' });
+is(Store.findProject(noteProj.id).note, 'A4・8P／◯◯印刷', 'タイトルを変えても制作メモは残る');
+Store.updateProject(noteProj.id, { note: '' });
+is(Store.findProject(noteProj.id).note, '', '制作メモを空にできる');
+
+// 書き出し → 読み込みで往復すること
+Store.updateProject(noteProj.id, { note: '再入稿あり' });
+var noteJson = Store.exportJson();
+is(JSON.parse(noteJson).dataVersion, 5, '書き出したJSONの dataVersion が5になる');
+Store.setData(Store.createEmptyData());
+Store.importJson(noteJson);
+is(Store.getData().projects[0].note, '再入稿あり', '制作メモが読み込みで復元される');
 
 Store.setData(Store.createEmptyData());
 

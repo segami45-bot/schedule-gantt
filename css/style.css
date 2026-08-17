@@ -349,6 +349,19 @@ body.is-dragging-modal { user-select: none; }
   border-radius: 5px;
 }
 
+/*
+ * ［バーを追加］で増えた行（CLAUDE.md 5.6）。
+ * ポップアップを閉じるまで、左端の青いラインと淡い背景で示します。
+ * 見た目だけの印で、データには何も記録しません。
+ */
+.barrow.is-new {
+  background: #eef4fb;
+  border-color: #b8cfe8;
+  border-left: 3px solid #4a7fd4;
+  /* 左の線が太くなるぶん、中身の位置がずれないように詰める */
+  padding-left: 4px;
+}
+
 .barrow__stage,
 .barrow__no {
   font: inherit;

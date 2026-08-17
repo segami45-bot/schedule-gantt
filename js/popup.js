@@ -413,6 +413,21 @@ var Popup = (function () {
    * 編集ポップアップ（CLAUDE.md 5.6）
    * ============================================================ */
 
+  /*
+   * ［バーを追加］で増えたバーの目印（CLAUDE.md 5.6）。
+   * データには何も記録せず、ポップアップを閉じるまで画面上で強調表示するだけです。
+   * scrollTarget は、作り直した直後にスクロールしたい行（描画のたびに拾い直す）。
+   */
+  var newBarIds = [];
+  var lastAddedBarId = null;
+  var scrollTarget = null;
+
+  function clearNewBarMarks() {
+    newBarIds = [];
+    lastAddedBarId = null;
+    scrollTarget = null;
+  }
+
   // このポップアップ用の実行ラッパ。失敗理由はポップアップ上部に出す
   function prun(action, rebuild) {
     return runOn(action, pparts.message, rebuild ? renderProject : null);
@@ -468,6 +483,8 @@ var Popup = (function () {
    */
   function buildBarRow(bar, ctx) {
     var row = el('div', 'barrow');
+    // ［バーを追加］で増えた行は、閉じるまで強調表示する（CLAUDE.md 5.6）
+    if (ctx.isNew) { row.className += ' is-new'; }
     var projectId = ctx.projectId;
     var run = ctx.run;
     // MT・入稿・納品は色を持たず、常に1日（CLAUDE.md 5.5 / 5.6）
@@ -639,6 +656,7 @@ var Popup = (function () {
     if (!project) { return; }
 
     pparts.title.value = project.title;
+    pparts.note.value = project.note || '';
     buildAssignees(project);
 
     // バー一覧（開始日順に並べる）
@@ -648,7 +666,11 @@ var Popup = (function () {
       pparts.bars.appendChild(el('p', 'settings__empty', 'バーがありません。'));
     } else {
       bars.forEach(function (bar) {
-        pparts.bars.appendChild(buildBarRow(bar, { projectId: currentProjectId, run: prun }));
+        var isNew = newBarIds.indexOf(bar.id) >= 0;
+        var node = buildBarRow(bar, { projectId: currentProjectId, run: prun, isNew: isNew });
+        pparts.bars.appendChild(node);
+        // 追加した行が画面の外にあるときは、そこまでスクロールする（CLAUDE.md 5.6）
+        if (isNew && bar.id === lastAddedBarId) { scrollTarget = node; }
       });
     }
 
@@ -686,6 +708,21 @@ var Popup = (function () {
     titleField.appendChild(pparts.title);
     body.appendChild(titleField);
 
+    /* ---- 制作メモ（CLAUDE.md 5.6） ----
+     * 自由記入の1行入力。この画面だけに出し、ガントや 5.11 には出しません。
+     */
+    var noteField = el('div', 'field');
+    noteField.appendChild(el('label', 'field__label', '制作メモ'));
+    pparts.note = input('settings__input settings__input--grow', '',
+                        'ボリューム・サイズ・印刷会社など');
+    pparts.note.addEventListener('change', function () {
+      prun(function () {
+        Store.updateProject(currentProjectId, { note: pparts.note.value });
+      });
+    });
+    noteField.appendChild(pparts.note);
+    body.appendChild(noteField);
+
     // ---- 担当者 ----
     var assigneeSection = section('担当者');
     assigneeSection.appendChild(el('p', 'settings__hint',
@@ -704,7 +741,15 @@ var Popup = (function () {
     addButton.type = 'button';
     addButton.addEventListener('click', function () {
       // 初期値は 工程「ラフ」・状態「未着手」・今日1日（CLAUDE.md 5.6）
-      prun(function () { Store.addBar(currentProjectId); }, true);
+      scrollTarget = null;
+      prun(function () {
+        var created = Store.addBar(currentProjectId);
+        // 作り直しの前に印を付けておく（renderProject が強調表示に使う）
+        newBarIds.push(created.id);
+        lastAddedBarId = created.id;
+      }, true);
+      // 追加した行が下にあって見えない場合はそこまでスクロールする（CLAUDE.md 5.6）
+      if (scrollTarget) { scrollTarget.scrollIntoView({ block: 'nearest' }); }
     });
     barAdd.appendChild(addButton);
     barSection.appendChild(barAdd);
@@ -748,6 +793,10 @@ var Popup = (function () {
 
     body.appendChild(foot);
     projectDialog.appendChild(body);
+
+    // 閉じたら新規バーの強調表示を解除する（CLAUDE.md 5.6）
+    projectDialog.addEventListener('close', clearNewBarMarks);
+
     document.body.appendChild(projectDialog);
   }
 
@@ -1035,6 +1084,7 @@ var Popup = (function () {
     if (!projectDialog) { buildProjectDialog(); }
     currentProjectId = projectId;
     hideMessage(pparts.message);
+    clearNewBarMarks(); // 前回開いたときの強調表示は持ち越さない（CLAUDE.md 5.6）
     renderProject();
     resetDialogPosition(projectDialog); // 前回ドラッグした位置を消し、中央表示に戻す
     projectDialog.showModal();
