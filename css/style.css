@@ -56,8 +56,8 @@
   --mark-white: #ffffff;  /* 白（色付きバーに重なる場合用） */
 
   /* ---- 日ハイライト色（CLAUDE.md 6.4） ---- */
-  --day-mt:      #f3f5f4;      /* MT（枠なし。案件行の背景と同じ色） */
-  --day-mt-line: #6b7176;      /* MT の凡例の見本だけに付ける枠線 */
+  /* MT は当日の予定として目立つよう、意図的に濃くする（CLAUDE.md 6.4） */
+  --day-mt:    #ffd966;        /* MT（濃い黄。今日のうすい黄より明確に濃く） */
   --day-tw:    #e6f2e6;        /* TW（薄緑） */
   /* 有休は日曜・祝日の列背景色と常に同じ色にする（CLAUDE.md 6.4） */
   --day-yukyu: var(--c-off);
@@ -540,10 +540,9 @@ body.is-dragging-modal { user-select: none; }
   border: 2px dashed var(--legend-cls-line);
 }
 
-/* MT の見本（CLAUDE.md 5.1 / 6.4）。実際のセルには枠線を付けず、見本だけ枠線で示す */
+/* MT の見本（CLAUDE.md 5.1 / 6.4）。塗りだけで分かるので枠線は付けない */
 .legend__swatch--mt {
   background: var(--day-mt);
-  border: 1px solid var(--day-mt-line);
 }
 
 .legend__label {
