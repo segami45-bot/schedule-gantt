@@ -975,16 +975,17 @@
   }
 
   /*
-   * バーを更新する。patch に入れた項目だけが変わります。
+   * バー1本に patch を当てます（保存はしません）。
    *   stage / stageNo / status  … 一覧にない値は拒否
    *   clsCheck                  … 囲い点線（CL&S確認中）のON/OFF
    *   startYmd / endYmd         … "YYYY-MM-DD"（画面の日付入力に合わせた形）
    *   start / end               … 半日シリアル値を直接指定する場合
-   * MT・入稿・納品は指定にかかわらず1日幅にそろえます（CLAUDE.md 5.5）。
+   * 文字ラベル工程は指定にかかわらず1日幅にそろえます（CLAUDE.md 5.5）。
+   *
+   * データに入っていないバー（5.11 新規作成モードの下書き）にも同じ規則を使えるよう、
+   * データの探索と保存を伴わない部分だけを切り出しています。
    */
-  function updateBar(projectId, barId, patch) {
-    var project = needProject(projectId);
-    var bar = needBar(project, barId);
+  function applyBarPatch(bar, patch) {
     var p = patch || {};
 
     if (p.stage !== undefined) {
@@ -1055,6 +1056,14 @@
       bar.end = range.end;
     }
 
+    return bar;
+  }
+
+  // データに入っているバーを更新して保存する（CLAUDE.md 5.6 / 5.11）
+  function updateBar(projectId, barId, patch) {
+    var project = needProject(projectId);
+    var bar = needBar(project, barId);
+    applyBarPatch(bar, patch);
     saveData();
     return bar;
   }
@@ -1180,7 +1189,9 @@
     setAssignee: setAssignee,
     toggleHidden: toggleHidden,
     removeProject: removeProject,
+    createBar: createBar,
     addBar: addBar,
+    applyBarPatch: applyBarPatch,
     updateBar: updateBar,
     removeBar: removeBar,
 

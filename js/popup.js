@@ -477,9 +477,42 @@ var Popup = (function () {
   /* ---- バー1本ぶんの行（CLAUDE.md 5.6） ---- */
 
   /*
+   * バー1本の読み書きの窓口。ふつうはデータのバーをそのまま更新し、そのつど保存します。
+   */
+  function storeBarAccess(projectId, barId) {
+    return {
+      read: function () {
+        var project = Store.findProject(projectId);
+        if (!project) { return null; }
+        var found = null;
+        project.bars.forEach(function (b) { if (b.id === barId) { found = b; } });
+        return found;
+      },
+      update: function (patch) { Store.updateBar(projectId, barId, patch); },
+      remove: function () { Store.removeBar(projectId, barId); }
+    };
+  }
+
+  /*
+   * 新規作成モードの窓口（CLAUDE.md 5.11）。
+   * まだデータに無い「下書き」のバーを書き換えるだけで、保存もグリッドへの描画もしません。
+   * 値の正規化（1日幅にそろえる・日付の検証）は Store と同じ処理を使います。
+   * 消すものが無いので remove は持ちません（破棄は［閉じる］/ Esc）。
+   */
+  function draftBarAccess(target) {
+    return {
+      read: function () { return target.bar; },
+      update: function (patch) { Store.applyBarPatch(target.bar, patch); },
+      remove: null
+    };
+  }
+
+  /*
    * バー1本ぶんの編集行。案件ポップアップ（5.6）と
    * 工程バー個別ポップアップ（5.11）の両方で使います。
-   * ctx = { projectId, run } … run(action, rebuild) は各ポップアップの実行ラッパ。
+   * ctx = { projectId, run, access, isNew }
+   *   run(action, rebuild) … 各ポップアップの実行ラッパ
+   *   access               … バーの読み書きの窓口（省略時はデータのバーを直接更新）
    */
   function buildBarRow(bar, ctx) {
     var row = el('div', 'barrow');
@@ -487,6 +520,7 @@ var Popup = (function () {
     if (ctx.isNew) { row.className += ' is-new'; }
     var projectId = ctx.projectId;
     var run = ctx.run;
+    var access = ctx.access || storeBarAccess(projectId, bar.id);
     // 文字ラベル工程は色を持たず、常に1日（CLAUDE.md 5.5 / 5.6）
     var hasBar = Store.hasBar(bar.stage);
     // MT はセル背景で表すので、文字色の2択も出しません（CLAUDE.md 5.6 / 5.12）
@@ -503,7 +537,7 @@ var Popup = (function () {
     // 工程が変わると番号セレクトの出し入れや1日幅化が起きるため作り直す
     stage.addEventListener('change', function () {
       run(function () {
-        Store.updateBar(projectId, bar.id, { stage: stage.value });
+        access.update({ stage: stage.value });
       }, true);
     });
     row.appendChild(stage);
@@ -519,7 +553,7 @@ var Popup = (function () {
       }
       no.addEventListener('change', function () {
         run(function () {
-          Store.updateBar(projectId, bar.id, { stageNo: no.value });
+          access.update({ stageNo: no.value });
         });
       });
       row.appendChild(no);
@@ -538,7 +572,7 @@ var Popup = (function () {
         swatch.setAttribute('aria-label', Render.statusLabel(status));
         if (status === bar.status) { swatch.classList.add('is-selected'); }
         swatch.addEventListener('click', function () {
-          if (run(function () { Store.updateBar(projectId, bar.id, { status: status }); })) {
+          if (run(function () { access.update({ status: status }); })) {
             palette.querySelectorAll('.palette__button').forEach(function (node) {
               node.classList.remove('is-selected');
             });
@@ -557,7 +591,7 @@ var Popup = (function () {
       clsCheck.title = 'クライアントおよび営業の確認待ち';
       clsCheck.addEventListener('change', function () {
         if (!run(function () {
-          Store.updateBar(projectId, bar.id, { clsCheck: clsCheck.checked });
+          access.update({ clsCheck: clsCheck.checked });
         })) {
           clsCheck.checked = !clsCheck.checked;
         }
@@ -587,7 +621,7 @@ var Popup = (function () {
         if ((bar.markColor || 'default') === choice.value) { swatch.classList.add('is-selected'); }
         swatch.addEventListener('click', function () {
           if (run(function () {
-            Store.updateBar(projectId, bar.id, { markColor: choice.value });
+            access.update({ markColor: choice.value });
           })) {
             markPalette.querySelectorAll('.palette__button').forEach(function (node) {
               node.classList.remove('is-selected');
@@ -614,13 +648,9 @@ var Popup = (function () {
       endInput.title = bar.stage + 'は1日だけの予定です';
     }
 
-    // 変更後は保存された値を読み直して入力欄に書き戻す（1日幅への補正が入るため）
+    // 変更後の値を読み直して入力欄に書き戻す（1日幅への補正が入るため）
     function syncDates() {
-      var fresh = null;
-      var project = Store.findProject(projectId);
-      if (project) {
-        project.bars.forEach(function (b) { if (b.id === bar.id) { fresh = b; } });
-      }
+      var fresh = access.read();
       if (!fresh) { return; }
       startInput.value = Store.ymdTextFromSerial(fresh.start);
       endInput.value = Store.ymdTextFromSerial(fresh.end);
@@ -628,13 +658,13 @@ var Popup = (function () {
 
     startInput.addEventListener('change', function () {
       run(function () {
-        Store.updateBar(projectId, bar.id, { startYmd: startInput.value });
+        access.update({ startYmd: startInput.value });
       });
       syncDates();
     });
     endInput.addEventListener('change', function () {
       run(function () {
-        Store.updateBar(projectId, bar.id, { endYmd: endInput.value });
+        access.update({ endYmd: endInput.value });
       });
       syncDates();
     });
@@ -643,13 +673,18 @@ var Popup = (function () {
     row.appendChild(el('span', 'barrow__tilde', '〜'));
     row.appendChild(endInput);
 
-    // バー削除
-    var del = el('button', 'settings__delete', '削除');
-    del.type = 'button';
-    del.addEventListener('click', function () {
-      run(function () { Store.removeBar(projectId, bar.id); }, true);
-    });
-    row.appendChild(del);
+    /*
+     * バー削除。新規作成モードの下書きには消すものが無いので出しません
+     * （破棄は［閉じる］か Esc / CLAUDE.md 5.11）。
+     */
+    if (access.remove) {
+      var del = el('button', 'settings__delete', '削除');
+      del.type = 'button';
+      del.addEventListener('click', function () {
+        run(function () { access.remove(); }, true);
+      });
+      row.appendChild(del);
+    }
 
     return row;
   }
@@ -816,28 +851,79 @@ var Popup = (function () {
   var bparts = {};
   var currentBar = { projectId: null, barId: null };
 
+  /*
+   * 新規作成モードの下書き（CLAUDE.md 5.11）。
+   * 案件行の空白セルのクリックで作られ、
+   * ［このバーを追加］を押すまでデータには何も作らず、グリッドにも描きません。
+   * 形は { projectId, bar }。編集モードでは null。
+   */
+  var draft = null;
+
   function brun(action, rebuild) {
     return runOn(action, bparts.message, rebuild ? renderBar : null);
   }
 
+  // いま開いているのがどの案件のバーか（下書き・編集モードのどちらでも使える）
+  function barProjectId() {
+    return draft ? draft.projectId : currentBar.projectId;
+  }
+
+  // いま開いているバーの読み書きの窓口
+  function barAccess() {
+    return draft ? draftBarAccess(draft) : storeBarAccess(currentBar.projectId, currentBar.barId);
+  }
+
   function findCurrentBar() {
-    var project = Store.findProject(currentBar.projectId);
-    if (!project) { return null; }
-    var found = null;
-    project.bars.forEach(function (b) { if (b.id === currentBar.barId) { found = b; } });
-    return found;
+    return barAccess().read();
   }
 
   function renderBar() {
-    var bar = findCurrentBar();
+    var access = barAccess();
+    var bar = access.read();
     if (!bar) { barDialog.close(); return; }
 
     bparts.body.innerHTML = '';
-    bparts.body.appendChild(buildBarRow(bar, { projectId: currentBar.projectId, run: brun }));
+    bparts.body.appendChild(buildBarRow(bar, {
+      projectId: barProjectId(), run: brun, access: access
+    }));
 
-    // どの案件のバーかがわかるように案件名を出す
-    var project = Store.findProject(currentBar.projectId);
-    bparts.title.textContent = project ? (project.title || '(無題)') : '';
+    /*
+     * 見出しは、編集モードならどの案件のバーかを示す案件名、
+     * 新規作成モードなら「新規バー」（CLAUDE.md 5.11）。
+     */
+    if (draft) {
+      bparts.title.textContent = '新規バー';
+    } else {
+      var project = Store.findProject(currentBar.projectId);
+      bparts.title.textContent = project ? (project.title || '(無題)') : '';
+    }
+
+    // フッターは［このバーを削除］と［このバーを追加］を入れ替える（CLAUDE.md 5.11）
+    bparts.addBar.hidden = !draft;
+    bparts.removeBar.hidden = !!draft;
+  }
+
+  /*
+   * ［このバーを追加］（CLAUDE.md 5.11）。
+   * ここで初めてバーを作成・保存し、ポップアップを閉じます。
+   * 作成そのものは通常の追加処理（Store.addBar）を使い、下書きの内容を当て直します。
+   */
+  function commitDraft() {
+    if (!draft) { return; }
+    var target = draft;
+    var ok = brun(function () {
+      var created = Store.addBar(target.projectId, Store.dayIndexFromSerial(target.bar.start));
+      Store.updateBar(target.projectId, created.id, {
+        stage: target.bar.stage,
+        stageNo: target.bar.stageNo,
+        status: target.bar.status,
+        clsCheck: target.bar.clsCheck,
+        markColor: target.bar.markColor,
+        startYmd: Store.ymdTextFromSerial(target.bar.start),
+        endYmd: Store.ymdTextFromSerial(target.bar.end)
+      });
+    });
+    if (ok) { barDialog.close(); }
   }
 
   function buildBarDialog() {
@@ -864,15 +950,26 @@ var Popup = (function () {
     toProject.type = 'button';
     toProject.addEventListener('click', function () {
       // 5.11 を閉じ、5.6 を通常どおり中央に表示する（CLAUDE.md 5.11）
-      var projectId = currentBar.projectId;
+      // 新規作成モードのときは下書きを破棄する（閉じたときに draft が消えます）
+      var projectId = barProjectId();
       barDialog.close();
       openProject(projectId);
     });
     foot.appendChild(toProject);
 
-    var removeBar = el('button', 'modal__foot-button modal__foot-button--danger', 'このバーを削除');
-    removeBar.type = 'button';
-    removeBar.addEventListener('click', function () {
+    /*
+     * 新規作成モードのときだけ出すボタン（CLAUDE.md 5.11）。
+     * ここを押すまでバーは作られません。
+     */
+    bparts.addBar = el('button', 'modal__foot-button modal__foot-button--primary', 'このバーを追加');
+    bparts.addBar.type = 'button';
+    bparts.addBar.hidden = true;
+    bparts.addBar.addEventListener('click', commitDraft);
+    foot.appendChild(bparts.addBar);
+
+    bparts.removeBar = el('button', 'modal__foot-button modal__foot-button--danger', 'このバーを削除');
+    bparts.removeBar.type = 'button';
+    bparts.removeBar.addEventListener('click', function () {
       var bar = findCurrentBar();
       if (!bar) { return; }
       // 確認ダイアログ必須（CLAUDE.md 5.11）
@@ -883,7 +980,7 @@ var Popup = (function () {
         barDialog.close();
       }
     });
-    foot.appendChild(removeBar);
+    foot.appendChild(bparts.removeBar);
 
     var close = el('button', 'modal__foot-button modal__foot-button--close', '閉じる');
     close.type = 'button';
@@ -892,6 +989,13 @@ var Popup = (function () {
 
     body.appendChild(foot);
     barDialog.appendChild(body);
+
+    /*
+     * 閉じたら下書きを捨てる（CLAUDE.md 5.11）。
+     * ［閉じる］・Esc・［案件全体を編集…］のどれでもここを通ります。
+     */
+    barDialog.addEventListener('close', function () { draft = null; });
+
     document.body.appendChild(barDialog);
   }
 
@@ -923,20 +1027,22 @@ var Popup = (function () {
 
   /*
    * 案件行の空白セルのクリックから呼ばれる（CLAUDE.md 5.5 / 5.11）。
-   * そのセルの日付を開始日（1日幅）とする新規バーを作り、そのまま 5.11 を開きます。
-   * 初期値は［バーを追加］と同じ（ラフ・未着手・囲いなし）。
-   * 押し間違えたときは［このバーを削除］で元に戻せます。
+   * 5.11 を新規作成モード（下書き）で開きます。
+   * 初期値は［バーを追加］と同じ（ラフ・未着手・囲いなし）で、日付はクリックしたセルの1日。
+   * この時点ではデータには何も作らず、［このバーを追加］を押して初めて作られます。
    */
   function addBarAt(projectId, dayIndex, anchor) {
-    var bar = null;
-    try {
-      bar = Store.addBar(projectId, dayIndex);
-    } catch (e) {
-      window.alert(e.message);
-      return;
-    }
-    if (onChange) { onChange(); } // 先にガントを描き直してからポップアップを出す
-    openBar(projectId, bar.id, anchor);
+    if (!Store.findProject(projectId)) { return; }
+    if (!barDialog) { buildBarDialog(); }
+
+    draft = { projectId: projectId, bar: Store.createBar(dayIndex) };
+    currentBar = { projectId: projectId, barId: null };
+
+    hideMessage(bparts.message);
+    renderBar();
+    resetDialogPosition(barDialog);
+    barDialog.showModal();
+    placeNearBar(anchor);
   }
 
   // バーのクリックから呼ばれる（CLAUDE.md 5.11）
@@ -945,6 +1051,7 @@ var Popup = (function () {
     if (!project) { return; }
     if (!barDialog) { buildBarDialog(); }
 
+    draft = null; // 編集モードで開く（下書きは持ち越さない）
     currentBar = { projectId: projectId, barId: barId };
     if (!findCurrentBar()) { return; }
 

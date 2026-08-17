@@ -490,6 +490,64 @@ Store.removeBar(proj.id, bar.id);
 is(Store.findProject(proj.id).bars.length, 1, 'バーを削除できる');
 
 /* ============================================================
+ * 12-b. データに入っていないバーの下書き（CLAUDE.md 5.11 新規作成モード）
+ *
+ * createBar で下書きを作り、applyBarPatch で書き換えます。
+ * この間、データ（案件のバー）は一切変わらないことを確かめます。
+ * ============================================================ */
+group('下書きのバー（新規作成モード）');
+
+var barsBefore = Store.findProject(proj.id).bars.length;
+var draftDay = Store.dayIndexFromYmd(2026, 9, 10);
+var draftBar = Store.createBar(draftDay);
+
+is(Store.ymdTextFromSerial(draftBar.start), '2026-09-10', '下書きは指定した日から始まる');
+is(Store.barDayCount(draftBar), 1, '下書きは1日幅');
+is(draftBar.stage, 'ラフ', '下書きの初期工程はラフ');
+is(draftBar.status, '未着手', '下書きの初期状態は未着手');
+is(draftBar.clsCheck, false, '下書きの囲い点線はOFF');
+is(draftBar.markColor, 'default', '下書きの文字色は既定色');
+is(Store.findProject(proj.id).bars.length, barsBefore, '下書きを作っても案件のバーは増えない');
+
+// 工程・状態・期間を書き換えられる（保存はされない）
+Store.applyBarPatch(draftBar, { stage: '修正', stageNo: 2, status: '50',
+                                startYmd: '2026-09-14', endYmd: '2026-09-16' });
+is(Store.barLabel(draftBar), '修正2', '下書きの工程と番号を変えられる');
+is(draftBar.status, '50', '下書きの状態を変えられる');
+is(Store.barDayCount(draftBar), 3, '下書きの期間を変えられる');
+
+// 文字ラベル工程の1日幅化など、Store と同じ規則が働く
+Store.applyBarPatch(draftBar, { stage: '入稿' });
+is(Store.barDayCount(draftBar), 1, '下書きでも入稿は1日幅にそろう');
+Store.applyBarPatch(draftBar, { markColor: 'white' });
+is(draftBar.markColor, 'white', '下書きの文字色を変えられる');
+
+// 一覧に無い値は下書きでも拒否する
+throws(function () { Store.applyBarPatch(draftBar, { stage: '責了' }); }, '工程は',
+       '下書きでも一覧に無い工程は拒否');
+throws(function () { Store.applyBarPatch(draftBar, { status: '進行中' }); }, '状態は',
+       '下書きでも一覧に無い状態は拒否');
+throws(function () { Store.applyBarPatch(draftBar, { startYmd: '2026/09/14' }); }, '開始日の形式',
+       '下書きでも不正な日付形式は拒否');
+
+is(Store.findProject(proj.id).bars.length, barsBefore, '下書きを書き換えても案件のバーは増えない');
+
+// 確定は通常の追加処理を使う（画面側の［このバーを追加］に相当）
+var committed = Store.addBar(proj.id, Store.dayIndexFromSerial(draftBar.start));
+Store.updateBar(proj.id, committed.id, {
+  stage: draftBar.stage, status: draftBar.status, markColor: draftBar.markColor,
+  startYmd: Store.ymdTextFromSerial(draftBar.start),
+  endYmd: Store.ymdTextFromSerial(draftBar.end)
+});
+var saved = Store.findProject(proj.id).bars[barsBefore];
+is(Store.findProject(proj.id).bars.length, barsBefore + 1, '確定するとバーが1本増える');
+is(saved.stage, '入稿', '確定したバーに下書きの工程が入る');
+is(saved.markColor, 'white', '確定したバーに下書きの文字色が入る');
+is(Store.ymdTextFromSerial(saved.start), '2026-09-14', '確定したバーに下書きの日付が入る');
+Store.removeBar(proj.id, committed.id);
+is(Store.findProject(proj.id).bars.length, barsBefore, '確認用に追加したバーを片付けた');
+
+/* ============================================================
  * 13. 非表示（CLAUDE.md 5.4 / 5.6）
  * ============================================================ */
 group('完了・非表示の切り替え');

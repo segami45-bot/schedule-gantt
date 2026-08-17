@@ -467,6 +467,19 @@ body.is-dragging-modal { user-select: none; }
 
 .modal__foot-button { flex: 0 0 auto; }
 
+/*
+ * ［このバーを追加］（CLAUDE.md 5.11 新規作成モード）。
+ * これを押して初めてバーが作られるので、押すべきボタンとして目立たせます。
+ */
+.modal__foot-button--primary {
+  color: #ffffff;
+  background: #3b73c4;
+  border-color: #2f5fa5;
+  font-weight: 700;
+}
+
+.modal__foot-button--primary:hover { background: #2f5fa5; }
+
 /* ［案件を削除］は赤系の危険色。誤操作を防ぐため左隣との間隔を広く取る */
 .modal__foot-button--danger {
   margin-left: 32px;
