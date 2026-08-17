@@ -175,6 +175,17 @@ var Render = (function () {
     };
   }
 
+  /*
+   * その案件行のその日に、バーが1本でも描かれているか（CLAUDE.md 5.5 の「空白セル」の定義）。
+   * 1本でもあればそのセルは空白ではないので、新規バーは作りません。
+   */
+  function hasBarOnDay(project, dayIndex) {
+    return project.bars.some(function (bar) {
+      return Store.dayIndexFromSerial(bar.start) <= dayIndex &&
+             dayIndex <= Store.dayIndexFromSerial(bar.end);
+    });
+  }
+
   function barGeometry(bar, viewStartDay, dayCount) {
     return geometryFromDays(
       Store.dayIndexFromSerial(bar.start),
@@ -195,23 +206,15 @@ var Render = (function () {
       node = el('div', 'bar bar--' + statusKey, Store.barLabel(bar));
       // 囲い点線 = CL&S確認中（CLAUDE.md 5.5）
       if (bar.clsCheck) { node.className += ' is-cls'; }
-    } else if (bar.stage === Store.MT_STAGE) {
+    } else {
       /*
        * MT は文字ラベルを描かず、その案件行の該当日セルに背景色を敷く（CLAUDE.md 5.12）。
        * バーとしての当たり判定（クリック＝5.11 / ドラッグ移動）はそのまま残すため、
        * 中身のない1日幅のバーとして置き、CSSでセル全体を塗ります。
+       * 文字が無いので、何の日かはホバー時のツールチップで補います（CLAUDE.md 5.12）。
        */
       node = el('div', 'bar bar--mtcell');
-    } else {
-      /*
-       * 文字ラベル工程はバーを描かず文字ラベルのみ（CLAUDE.md 5.5）。
-       * 文字色は工程ごとの既定色か白（CLAUDE.md 6.2）。
-       * 文字は1日ぶんの幅からはみ出すため、ラベルの矩形を掴めるよう
-       * 内側の要素だけがポインタを受け取るようにしています（CLAUDE.md 5.11）。
-       */
-      var markKey = bar.markColor === 'white' ? 'white' : MARK_KEYS[bar.stage];
-      node = el('div', 'bar bar--mark mark--' + markKey);
-      node.appendChild(el('span', 'bar__hit', Store.barLabel(bar)));
+      node.title = 'MT（打ち合わせ）';
     }
 
     node.style.left = geo.left + '%';
@@ -220,6 +223,38 @@ var Render = (function () {
     // ドラッグ移動（CLAUDE.md 5.10 / ロードマップV2-a）
     attachBarDrag(node, bar, project);
     return node;
+  }
+
+  /*
+   * 文字ラベル工程（MT以外）を2つの要素に分けて作ります（CLAUDE.md 5.11）。
+   *   hit   … 1日ぶんの透明な当たり判定。色付きバーより後ろに置く
+   *   label … 文字ラベル。色付きバーより前に置き、重なっても読めるようにする
+   *
+   * こう分けるのは「見えているものが押せる」ようにするためです。
+   * 色付きバーが重なっている部分は色付きバーが押され、
+   * 何も描かれていない部分と文字の上は文字ラベル工程が押されます。
+   * どちらを掴んでも同じバーが動くよう、2つをまとめてドラッグ対象にします。
+   */
+  function buildMarkBar(bar, viewStartDay, dayCount, project) {
+    var geo = barGeometry(bar, viewStartDay, dayCount);
+    if (!geo) { return null; }
+
+    var hit = el('div', 'bar bar--markhit');
+
+    // 文字色は工程ごとの既定色か白（CLAUDE.md 6.2）
+    var markKey = bar.markColor === 'white' ? 'white' : MARK_KEYS[bar.stage];
+    var label = el('div', 'bar bar--mark mark--' + markKey);
+    label.appendChild(el('span', 'bar__hit', Store.barLabel(bar)));
+
+    var nodes = [hit, label];
+    nodes.forEach(function (node) {
+      node.style.left = geo.left + '%';
+      node.style.width = geo.width + '%';
+      // 2要素を1本のバーとして動かす（CLAUDE.md 5.10）
+      attachBarDrag(node, bar, project, nodes);
+    });
+
+    return { hit: hit, label: label };
   }
 
   /* ============================================================
@@ -310,12 +345,17 @@ var Render = (function () {
     return row.getBoundingClientRect().width / dragCtx.dayCount;
   }
 
-  // ドラッグ中の見た目を、仮の位置に合わせて動かす
-  function applyDragVisual(node, startDay, endDay) {
+  /*
+   * ドラッグ中の見た目を、仮の位置に合わせて動かす。
+   * nodes は1本のバーを構成する要素の一覧（文字ラベル工程は当たり判定と文字の2つ）。
+   */
+  function applyDragVisual(nodes, startDay, endDay) {
     var geo = geometryFromDays(startDay, endDay, dragCtx.viewStartDay, dragCtx.dayCount);
     if (!geo) { return; }
-    node.style.left = geo.left + '%';
-    node.style.width = geo.width + '%';
+    nodes.forEach(function (node) {
+      node.style.left = geo.left + '%';
+      node.style.width = geo.width + '%';
+    });
   }
 
   // 掴んだ場所と動かした日数から、仮の開始日・終了日を求める
@@ -328,7 +368,7 @@ var Render = (function () {
   function endDrag() {
     if (!dragState) { return; }
     if (dragState.moved) {
-      dragState.node.classList.remove('is-dragging');
+      dragState.nodes.forEach(function (node) { node.classList.remove('is-dragging'); });
       document.body.classList.remove('is-dragging-bar');
       document.body.classList.remove('is-resizing-bar');
     }
@@ -343,7 +383,7 @@ var Render = (function () {
   function onDragKeyDown(e) {
     if (!dragState || e.key !== 'Escape') { return; }
     var s = dragState;
-    applyDragVisual(s.node, s.startDay, s.endDay);
+    applyDragVisual(s.nodes, s.startDay, s.endDay);
     if (s.moved) { swallowNextClick = true; }
     endDrag();
     e.preventDefault();
@@ -360,7 +400,7 @@ var Render = (function () {
       // 縦揺れも「動いた」に数え、意図しないポップアップ表示を防ぐ
       if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD_PX) { return; }
       s.moved = true;
-      s.node.classList.add('is-dragging');
+      s.nodes.forEach(function (node) { node.classList.add('is-dragging'); });
       document.body.classList.add(s.mode === 'move' ? 'is-dragging-bar' : 'is-resizing-bar');
     }
 
@@ -372,7 +412,7 @@ var Render = (function () {
     if (days !== s.delta) {
       s.delta = days;
       var next = previewDays(s);
-      applyDragVisual(s.node, next.start, next.end);
+      applyDragVisual(s.nodes, next.start, next.end);
     }
   }
 
@@ -406,8 +446,14 @@ var Render = (function () {
     if (dragCtx.onBarChange) { dragCtx.onBarChange(); }
   }
 
-  function attachBarDrag(node, bar, project) {
+  /*
+   * バーにドラッグ操作を付けます。
+   * nodes は1本のバーを構成する要素の一覧（省略時は node 自身だけ）。
+   * 文字ラベル工程は「当たり判定」と「文字」の2要素なので、両方をまとめて渡します。
+   */
+  function attachBarDrag(node, bar, project, nodes) {
     if (!project) { return; }
+    var group = nodes || [node];
 
     node.addEventListener('pointerdown', function (e) {
       if (e.button !== 0 || dragState) { return; } // 左ボタンのみ
@@ -418,6 +464,7 @@ var Render = (function () {
 
       dragState = {
         node: node,
+        nodes: group,
         bar: bar,
         projectId: project.id,
         pointerId: e.pointerId,
@@ -452,7 +499,7 @@ var Render = (function () {
     node.addEventListener('pointercancel', function () {
       if (!dragState) { return; }
       var s = dragState;
-      applyDragVisual(s.node, s.startDay, s.endDay);
+      applyDragVisual(s.nodes, s.startDay, s.endDay);
       endDrag();
       node.style.cursor = '';
     });
@@ -656,20 +703,34 @@ var Render = (function () {
     var fill = buildDayFill(days, marks[row.member.id]);
     if (fill) { node.appendChild(fill); }
 
+    // 開始日順に描き、重なった部分は後のバーが前面になる（CLAUDE.md 5.5）
+    var bars = row.project.bars.slice().sort(function (a, b) { return a.start - b.start; });
+
     /*
-     * 開始日順に描き、重なった部分は後のバーが前面になる（CLAUDE.md 5.5）。
-     * MT はセル背景なので必ず先に描き、他のバーを前面に出します（CLAUDE.md 5.12）。
+     * 重なりの前後関係（CLAUDE.md 5.11「見えているものが押せる」）。
+     * 後ろから順に3つの層に分けて並べます。
+     *   back   … MT のセル背景と、文字ラベル工程の1日ぶんの当たり判定
+     *   middle … 色付きバー
+     *   front  … 文字ラベル工程の文字（色付きバーに重なっても読める・押せる）
      */
-    var bars = row.project.bars.slice().sort(function (a, b) {
-      var aMt = a.stage === Store.MT_STAGE ? 0 : 1;
-      var bMt = b.stage === Store.MT_STAGE ? 0 : 1;
-      if (aMt !== bMt) { return aMt - bMt; }
-      return a.start - b.start;
-    });
+    var back = [];
+    var middle = [];
+    var front = [];
+
     bars.forEach(function (bar) {
-      var barNode = buildBar(bar, viewStartDay, dayCount, row.project);
-      if (barNode) { node.appendChild(barNode); }
+      if (Store.hasBar(bar.stage) || bar.stage === Store.MT_STAGE) {
+        var barNode = buildBar(bar, viewStartDay, dayCount, row.project);
+        if (!barNode) { return; }
+        if (bar.stage === Store.MT_STAGE) { back.push(barNode); } else { middle.push(barNode); }
+        return;
+      }
+      var pair = buildMarkBar(bar, viewStartDay, dayCount, row.project);
+      if (!pair) { return; }
+      back.push(pair.hit);
+      front.push(pair.label);
     });
+
+    back.concat(middle, front).forEach(function (barNode) { node.appendChild(barNode); });
     return node;
   }
 
@@ -714,14 +775,16 @@ var Render = (function () {
     /*
      * 案件行（グリッド側）の空白セルのクリックで、
      * そのセルの日付を開始日とする新規バーを作り 5.11 を開く（CLAUDE.md 5.5）。
-     * バーの上のクリックはバー側で止めているので、ここには届きません。
+     * バーの上のクリックはバー側で止めているので、ふつうはここには届きません。
+     * それでも、バーの上下のわずかな余白などから届くことがあるため、
+     * 「その日にバーが1本も無い」ことを念のため確かめます（CLAUDE.md 5.5 の空白セルの定義）。
      */
     function makeCellClickable(node, project) {
       if (!opts.onCreateBarAt) { return; }
       node.classList.add('is-clickable');
       node.addEventListener('click', function (e) {
         var hit = cellFromClick(node, e.clientX, viewStartDay, view.dayCount);
-        if (!hit) { return; }
+        if (!hit || hasBarOnDay(project, hit.dayIndex)) { return; }
         opts.onCreateBarAt(project.id, hit.dayIndex, hit.rect);
       });
     }

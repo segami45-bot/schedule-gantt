@@ -905,9 +905,14 @@ body.is-resizing-bar .bar { cursor: ew-resize; }
 }
 
 /*
- * 文字ラベル工程は、はみ出した文字の部分もクリックできるようにする
- * （CLAUDE.md 5.11 ラベルの矩形をクリック領域とする）。
- * バー自体は1日幅のままにし、中の文字だけを掴めるようにしています。
+ * 文字ラベル工程のクリック領域（CLAUDE.md 5.11）。
+ *
+ * 文字は1日ぶんの幅からはみ出すため、
+ *   ・文字の部分（.bar__hit）は色付きバーより前面に置いて押せるようにする
+ *   ・1日ぶんの枠は .bar--markhit（下の層）が受け持つ
+ * とし、枠のうち色付きバーが重なっている部分は色付きバーが押されるようにしています
+ * （原則: 見えているものが押せる）。
+ * そのため、文字を包むこの要素自体はポインタを受け取りません。
  */
 .bar--mark { pointer-events: none; }
 
@@ -915,6 +920,20 @@ body.is-resizing-bar .bar { cursor: ew-resize; }
   pointer-events: auto;
   padding: 0 4px;
   white-space: nowrap;
+}
+
+/*
+ * 文字ラベル工程の1日ぶんの当たり判定（CLAUDE.md 5.11）。
+ * 見た目は持たず、セルの上下いっぱいまで広げて、
+ * 枠内のどこを押しても・どこからドラッグしてもそのバーになるようにします。
+ * （ここが無いと、文字から離れた枠内のクリックが空白セル扱いになってしまいます）
+ */
+.bar--markhit {
+  top: 0;
+  bottom: 0;
+  padding: 0;
+  background: none;
+  border-radius: 0;
 }
 
 .mark--nyuko { color: var(--mark-nyuko); }
