@@ -288,6 +288,54 @@ var Render = (function () {
   // pointerdown からこの距離以上動いたらドラッグ、未満はクリック（CLAUDE.md 5.10）
   var DRAG_THRESHOLD_PX = 4;
 
+  /* ---- タッチ操作（CLAUDE.md 5.15） ----
+   * 指の移動はまず画面スクロール。バーを長押ししたときだけドラッグに入ります。
+   * マウスの規則（4px でドラッグ・長押し不要）は従来どおりです。
+   */
+  var TOUCH_HOLD_MS = 400;   // これだけ静止したらドラッグ開始
+  var TOUCH_CLICK_PX = 10;   // これ未満の移動で指を離したときだけタップ＝クリック
+
+  function isTouchEvent(e) {
+    return e.pointerType === 'touch';
+  }
+
+  function distance(dx, dy) {
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  /*
+   * タッチでのクリック判別（CLAUDE.md 5.15）。
+   * 指が TOUCH_CLICK_PX 以上動いた操作や、スクロールに取られた操作（pointercancel）は
+   * 「スクロールだった」とみなし、指を離してもクリックにしません。
+   * 返り値の関数を click ハンドラの先頭で呼び、true のときだけ処理を続けます。
+   */
+  function touchClickGuard(node) {
+    var start = null;
+    var blocked = false;
+
+    node.addEventListener('pointerdown', function (e) {
+      blocked = false;
+      start = isTouchEvent(e) ? { x: e.clientX, y: e.clientY } : null;
+    });
+
+    node.addEventListener('pointermove', function (e) {
+      if (!start || !isTouchEvent(e)) { return; }
+      if (distance(e.clientX - start.x, e.clientY - start.y) >= TOUCH_CLICK_PX) {
+        blocked = true; // スクロールとみなす
+      }
+    });
+
+    node.addEventListener('pointercancel', function (e) {
+      if (isTouchEvent(e)) { blocked = true; } // ブラウザがスクロールを始めた
+    });
+
+    return function allowClick() {
+      var wasBlocked = blocked;
+      blocked = false;
+      return !wasBlocked;
+    };
+  }
+
   // 伸縮の掴みしろ（CLAUDE.md 5.10）
   var HANDLE_PX = 6;        // 通常の掴みしろ幅
   var HANDLE_NARROW = 24;   // これ未満のバーは掴みしろを 1/4 に縮める
@@ -389,8 +437,12 @@ var Render = (function () {
 
   function endDrag() {
     if (!dragState) { return; }
+    if (dragState.holdTimer) { clearTimeout(dragState.holdTimer); }
     if (dragState.moved) {
-      dragState.nodes.forEach(function (node) { node.classList.remove('is-dragging'); });
+      dragState.nodes.forEach(function (node) {
+        node.classList.remove('is-dragging');
+        node.classList.remove('is-touch-drag');
+      });
       document.body.classList.remove('is-dragging-bar');
       document.body.classList.remove('is-resizing-bar');
     }
@@ -412,10 +464,45 @@ var Render = (function () {
     e.stopPropagation();
   }
 
+  /*
+   * タッチの長押しが成立したとき（CLAUDE.md 5.15）。
+   * ここからの指の移動がバーの移動になります。
+   */
+  function startTouchDrag() {
+    if (!dragState || !dragState.pending) { return; }
+    var s = dragState;
+    s.pending = false;
+    s.holdTimer = null;
+    s.moved = true; // 以後は指の移動＝バーの移動
+    s.nodes.forEach(function (node) {
+      node.classList.add('is-dragging');
+      node.classList.add('is-touch-drag'); // 長押しが効いたことを見せる
+    });
+    document.body.classList.add('is-dragging-bar');
+    // 指を離してもポップアップは開かない（タップではないため）
+    swallowNextClick = true;
+  }
+
+  /*
+   * 長押しが成立する前に指が動いた＝スクロール（CLAUDE.md 5.15）。
+   * ドラッグもクリックも起こさず、あとはブラウザのスクロールに任せます。
+   */
+  function cancelTouchHold() {
+    if (!dragState) { return; }
+    swallowNextClick = true;
+    endDrag();
+  }
+
   function onDragPointerMove(e) {
     if (!dragState) { return; }
     var s = dragState;
     var dx = e.clientX - s.originX;
+
+    // タッチ: 長押しが成立するまではスクロール優先（CLAUDE.md 5.15）
+    if (s.pending) {
+      if (distance(dx, e.clientY - s.originY) >= TOUCH_CLICK_PX) { cancelTouchHold(); }
+      return;
+    }
 
     if (!s.moved) {
       var dy = e.clientY - s.originY;
@@ -441,6 +528,16 @@ var Render = (function () {
   function onDragPointerUp() {
     if (!dragState) { return; }
     var s = dragState;
+
+    /*
+     * タッチで、長押しが成立する前に指を離した＝タップ（CLAUDE.md 5.15）。
+     * 移動は TOUCH_CLICK_PX 未満なので、そのままクリックとして扱います。
+     */
+    if (s.pending) {
+      endDrag();
+      return; // click イベント側でポップアップが開く
+    }
+
     var moved = s.moved;
     var delta = s.delta;
     var next = previewDays(s);
@@ -479,10 +576,12 @@ var Render = (function () {
 
     node.addEventListener('pointerdown', function (e) {
       if (e.button !== 0 || dragState) { return; } // 左ボタンのみ
+      var touch = isTouchEvent(e);
       var startDay = Store.dayIndexFromSerial(bar.start);
       var endDay = Store.dayIndexFromSerial(bar.end);
       // 左右端を掴んだら伸縮、それ以外は移動（CLAUDE.md 5.10）
-      var mode = resizeZone(node, bar, e.clientX) || 'move';
+      // タッチでは伸縮しない（掴みしろを出さない / CLAUDE.md 5.15）
+      var mode = (touch ? null : resizeZone(node, bar, e.clientX)) || 'move';
 
       dragState = {
         node: node,
@@ -497,18 +596,35 @@ var Render = (function () {
         endDay: endDay,
         limits: edgeLimits(mode, startDay, endDay, dragCtx.viewStartDay, dragCtx.dayCount),
         delta: 0,
-        moved: false
+        moved: false,
+        // タッチは長押しが成立するまで保留（それまではスクロール優先 / CLAUDE.md 5.15）
+        isTouch: touch,
+        pending: touch,
+        holdTimer: null
       };
 
       swallowNextClick = false;
-      node.setPointerCapture(e.pointerId);
+      /*
+       * 指やマウスが要素の外へ出ても追跡できるようにする。
+       * すでに離されているなど、掴めない状況では例外になることがあるので、
+       * ここで失敗しても以降の処理（長押しの計測など）は続けます。
+       */
+      try {
+        node.setPointerCapture(e.pointerId);
+      } catch (err) { /* 掴めなくてもドラッグ自体は続けられる */ }
       document.addEventListener('keydown', onDragKeyDown, true);
-      e.preventDefault(); // 文字選択を防ぐ
+
+      if (touch) {
+        // 約400ms 静止したらドラッグモードに入る（CLAUDE.md 5.15）
+        dragState.holdTimer = setTimeout(startTouchDrag, TOUCH_HOLD_MS);
+      } else {
+        e.preventDefault(); // 文字選択を防ぐ（マウスのみ）
+      }
     });
 
-    // 端に乗せたら左右矢印カーソルにする（CLAUDE.md 5.10）
+    // 端に乗せたら左右矢印カーソルにする（CLAUDE.md 5.10。タッチでは出さない）
     node.addEventListener('pointermove', function (e) {
-      if (dragState) { return; } // ドラッグ中は onDragPointerMove が担当
+      if (dragState || isTouchEvent(e)) { return; } // ドラッグ中は onDragPointerMove が担当
       node.style.cursor = resizeZone(node, bar, e.clientX) ? 'ew-resize' : '';
     });
 
@@ -518,10 +634,15 @@ var Render = (function () {
 
     node.addEventListener('pointermove', onDragPointerMove);
     node.addEventListener('pointerup', onDragPointerUp);
+    /*
+     * ブラウザがスクロールを始めるとここに来ます（タッチ）。
+     * 見た目を元に戻し、指を離してもクリックにしません（CLAUDE.md 5.15）。
+     */
     node.addEventListener('pointercancel', function () {
       if (!dragState) { return; }
       var s = dragState;
-      applyDragVisual(s.nodes, s.startDay, s.endDay);
+      if (!s.pending) { applyDragVisual(s.nodes, s.startDay, s.endDay); }
+      swallowNextClick = true;
       endDrag();
       node.style.cursor = '';
     });
@@ -539,6 +660,17 @@ var Render = (function () {
       }
       if (dragCtx.onOpenBar) { dragCtx.onOpenBar(project.id, bar.id, node); }
     });
+  }
+
+  /*
+   * タッチで長押しドラッグに入っている間だけ、画面スクロールを止めます（CLAUDE.md 5.15）。
+   * touch-action はポインタを下ろした時点で決まるため、ここで touchmove を止めます。
+   * 長押しの前（保留中）は止めないので、ふつうのスクロールはそのまま効きます。
+   */
+  if (typeof document !== 'undefined') {
+    document.addEventListener('touchmove', function (e) {
+      if (dragState && dragState.isTouch && !dragState.pending) { e.preventDefault(); }
+    }, { passive: false });
   }
 
   /* ============================================================
@@ -835,7 +967,12 @@ var Render = (function () {
     function makeLabelClickable(node, project) {
       if (!opts.onOpenProject) { return; }
       node.classList.add('is-clickable');
-      node.addEventListener('click', function () { opts.onOpenProject(project.id); });
+      // タッチのスクロールをクリックにしない（CLAUDE.md 5.15）
+      var allowClick = touchClickGuard(node);
+      node.addEventListener('click', function () {
+        if (!allowClick()) { return; }
+        opts.onOpenProject(project.id);
+      });
     }
 
     /*
@@ -848,7 +985,10 @@ var Render = (function () {
     function makeCellClickable(node, project) {
       if (!opts.onCreateBarAt) { return; }
       node.classList.add('is-clickable');
+      // タッチのスクロールで新規バーが生まれないようにする（CLAUDE.md 5.15）
+      var allowClick = touchClickGuard(node);
       node.addEventListener('click', function (e) {
+        if (!allowClick()) { return; }
         var hit = cellFromClick(node, e.clientX, viewStartDay, view.dayCount);
         if (!hit || hasBarOnDay(project, hit.dayIndex)) { return; }
         opts.onCreateBarAt(project.id, hit.dayIndex, hit.rect);

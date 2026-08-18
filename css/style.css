@@ -944,8 +944,11 @@ body.is-dragging-modal { user-select: none; }
   bottom: 3px;
   /* 掴んで動かせることを示す（CLAUDE.md 5.10 / ロードマップV2-a） */
   cursor: grab;
-  /* ドラッグ中にブラウザ既定のスクロール・拡大縮小を起こさせない */
-  touch-action: none;
+  /*
+   * タッチでは、バーの上でも指の移動をまず画面スクロールとして扱います（CLAUDE.md 5.15）。
+   * そのため touch-action は既定（auto）のままにし、
+   * 長押しでドラッグに入ったあいだだけ render.js が touchmove を止めます。
+   */
   display: flex;
   align-items: center;
   padding: 0 5px;
@@ -971,6 +974,15 @@ body.is-dragging-modal { user-select: none; }
   z-index: 2;
   opacity: .85;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+}
+
+/*
+ * タッチの長押しでドラッグに入ったことを示す（CLAUDE.md 5.15）。
+ * 指で隠れても分かるよう、少し縦に伸ばして影を濃くします。
+ */
+.bar.is-touch-drag {
+  transform: scaleY(1.3);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .4);
 }
 
 /* ドラッグ中は文字選択とカーソルのちらつきを止める */
