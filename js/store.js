@@ -34,7 +34,7 @@
   var DATA_KEY = 'sgantt.data'; // データ本体の保存キー（CLAUDE.md 5.9）
   var VIEW_KEY = 'sgantt.view'; // 表示状態の保存キー（CLAUDE.md 5.9）
 
-  var DATA_VERSION = 5; // 現在のデータ構造の版（CLAUDE.md 4.2）
+  var DATA_VERSION = 6; // 現在のデータ構造の版（CLAUDE.md 4.2）
 
   var MIN_DAY_COUNT = 1;   // 表示幅の下限（CLAUDE.md 5.2）
   var MAX_DAY_COUNT = 120; // 表示幅の上限（CLAUDE.md 5.2）
@@ -174,15 +174,18 @@
   /* ------------------------------------------------------------
    * 営業日（CLAUDE.md 5.2 の［7営業日］用）
    *
-   * 営業日 = 土曜・日曜・祝日を除いた日。
+   * 営業日 = 土曜・日曜・祝日・社休日を除いた日。
    * 祝日の一覧（{ "YYYY-MM-DD": "祝日名" } の形）は呼び出し側から渡します。
    * このファイルは定数ファイル（js/holidays.js）に依存しないでおくためです。
    * 渡さなかった場合は「祝日なし」として扱います。
+   * 社休日は自分のデータ（companyHolidays）を見るので、渡す必要はありません。
    * ------------------------------------------------------------ */
 
   function isBusinessDay(dayIndex, holidays) {
     var dow = dateFromDayIndex(dayIndex).getDay(); // 0=日曜 … 6=土曜
     if (dow === 0 || dow === 6) { return false; }
+    // 社休日（会社の休業日）も営業日から外す（CLAUDE.md 5.2 / 5.8）
+    if (isCompanyHoliday(dayIndex)) { return false; }
     var map = holidays || {};
     return !map[ymdTextFromDayIndex(dayIndex)];
   }
@@ -190,8 +193,8 @@
   /*
    * 開始日から数えて count 営業日目にあたる日（通算日数）を返します。
    * 開始日そのものが営業日なら、それを1営業日目として数えます。
-   * 土日・祝日が挟まるぶん、返る日は先へ伸びます。
-   * 開始日が土日祝でも開始日は動かしません（CLAUDE.md 5.2 は開始日=今日）。
+   * 土日・祝日・社休日が挟まるぶん、返る日は先へ伸びます。
+   * 開始日が土日祝・社休日でも開始日は動かしません（CLAUDE.md 5.2 は開始日=今日）。
    * 探索は表示幅の上限（120日）までとし、それでも足りなければ最後に見つけた営業日を返します。
    */
   function businessDayEndIndex(startDayIndex, count, holidays) {
@@ -446,11 +449,41 @@
      *          担当2名以上の案件は人数分の独立した案件に分割する（案件の項で行う）
      *   4 → 5: 案件に note（制作メモ）を追加。
      *          省略されていれば空文字で補うため、個別の処理は要りません（案件の項で行う）
+     *   5 → 6: トップレベルに companyHolidays（社休日）を追加。
+     *          省略されていれば空配列で補う（この下の「社休日」の項で行う）
      */
 
     if (!Array.isArray(raw.departments) || !Array.isArray(raw.members) ||
         !Array.isArray(raw.projects)) {
       throw fail('データに departments / members / projects のいずれかがありません。');
+    }
+
+    /* ---- 社休日（CLAUDE.md 4.3） ----
+     * dataVersion 5 以前には無い項目なので、無ければ空配列にします。
+     * 値はその日の午前の半日シリアル値（偶数）。昇順・重複なしにそろえます。
+     * 数値でない値は取り違えの心配が無いため、捨てて notes に残します。
+     */
+    var companyHolidays = [];
+    if (Array.isArray(raw.companyHolidays)) {
+      var dropped = 0;
+      raw.companyHolidays.forEach(function (v) {
+        // null や true は Number() で 0 になってしまうため、数と数字の文字列だけを通す
+        var numeric = typeof v === 'number' ||
+                      (typeof v === 'string' && v.trim() !== '');
+        var n = numeric ? Math.floor(Number(v)) : NaN;
+        if (!isFinite(n)) { dropped++; return; }
+        var serial = serialFromDayIndex(dayIndexFromSerial(n), AM); // 午前にそろえる
+        if (companyHolidays.indexOf(serial) < 0) { companyHolidays.push(serial); }
+      });
+      if (dropped > 0) {
+        note('社休日のうち日付として読めない' + dropped + '件を取り除きました。');
+      }
+      if (companyHolidays.length !== raw.companyHolidays.length - dropped) {
+        note('社休日の重複を取り除きました。');
+      }
+      companyHolidays.sort(function (a, b) { return a - b; });
+    } else if (raw.companyHolidays !== undefined) {
+      note('社休日の形式が正しくなかったため、空にしました。');
     }
 
     // ---- 部署 ----
@@ -575,6 +608,7 @@
 
     return {
       dataVersion: DATA_VERSION,
+      companyHolidays: companyHolidays,
       departments: departments,
       members: members,
       projects: projects
@@ -582,7 +616,13 @@
   }
 
   function createEmptyData() {
-    return { dataVersion: DATA_VERSION, departments: [], members: [], projects: [] };
+    return {
+      dataVersion: DATA_VERSION,
+      companyHolidays: [],
+      departments: [],
+      members: [],
+      projects: []
+    };
   }
 
   /* ============================================================
@@ -878,6 +918,52 @@
     }
     data.members = data.members.filter(function (m) { return m.id !== id; });
     saveData();
+    return true;
+  }
+
+  /* ============================================================
+   * 社休日の CRUD（CLAUDE.md 4.3 / 5.8）
+   *
+   * 会社の休業日。各要素はその日の午前の半日シリアル値（偶数）で、
+   * 常に昇順・重複なしで持ちます。過去の日付も消さずに残します。
+   * ============================================================ */
+
+  // 登録済みの社休日（午前の半日シリアル値の配列）。昇順のコピーを返す
+  function listCompanyHolidays() {
+    return data.companyHolidays.slice();
+  }
+
+  // その日（通算日数）が社休日か
+  function isCompanyHoliday(dayIndex) {
+    return data.companyHolidays.indexOf(serialFromDayIndex(dayIndex, AM)) >= 0;
+  }
+
+  /*
+   * 社休日を1日追加する（CLAUDE.md 5.8）。
+   * ymdText は "YYYY-MM-DD"。すでに登録済みの日付は何もしません（重複は無視）。
+   * 追加した（またはすでにあった）日の半日シリアル値を返します。
+   */
+  function addCompanyHoliday(ymdText) {
+    var dayIndex = dayIndexFromYmdText(ymdText);
+    if (dayIndex === null) {
+      throw fail('社休日の日付を YYYY-MM-DD の形式で選んでください。');
+    }
+    var serial = serialFromDayIndex(dayIndex, AM);
+    if (data.companyHolidays.indexOf(serial) < 0) {
+      data.companyHolidays.push(serial);
+      data.companyHolidays.sort(function (a, b) { return a - b; });
+      saveData();
+    }
+    return serial;
+  }
+
+  // 社休日を1日消す（CLAUDE.md 5.8）。無い日付を指定しても失敗にはしない
+  function removeCompanyHoliday(serial) {
+    var target = Math.floor(Number(serial));
+    if (!isFinite(target)) { throw fail('社休日の指定が正しくありません。'); }
+    var before = data.companyHolidays.length;
+    data.companyHolidays = data.companyHolidays.filter(function (v) { return v !== target; });
+    if (data.companyHolidays.length !== before) { saveData(); }
     return true;
   }
 
@@ -1182,6 +1268,12 @@
     addMember: addMember,
     updateMember: updateMember,
     removeMember: removeMember,
+
+    // 社休日
+    listCompanyHolidays: listCompanyHolidays,
+    isCompanyHoliday: isCompanyHoliday,
+    addCompanyHoliday: addCompanyHoliday,
+    removeCompanyHoliday: removeCompanyHoliday,
 
     // 案件・バー
     addProject: addProject,

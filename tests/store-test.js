@@ -301,6 +301,82 @@ throws(function () { Store.updateMember(sato.id, { deptId: '無い' }); }, '部�
 throws(function () { Store.removeDepartment(dept.id); }, '担当者が2人います', '担当者のいる部署の削除は拒否');
 
 /* ============================================================
+ * 8-b. 社休日（CLAUDE.md 4.3 / 5.8）
+ * ============================================================ */
+group('社休日の追加・削除');
+
+is(Store.listCompanyHolidays().length, 0, '初期状態では社休日は0件');
+
+var ch1 = Store.addCompanyHoliday('2026-08-14');
+is(Store.listCompanyHolidays().length, 1, '社休日を追加できる');
+is(Store.halfFromSerial(ch1), Store.AM, '社休日は午前の半日シリアル値で持つ');
+is(Store.ymdTextFromSerial(ch1), '2026-08-14', '追加した日付が入る');
+is(Store.isCompanyHoliday(Store.dayIndexFromYmd(2026, 8, 14)), true, 'その日は社休日と判定される');
+is(Store.isCompanyHoliday(Store.dayIndexFromYmd(2026, 8, 13)), false, '前日は社休日ではない');
+
+// 重複した日付の追加は無視する（CLAUDE.md 5.8）
+Store.addCompanyHoliday('2026-08-14');
+is(Store.listCompanyHolidays().length, 1, '同じ日付を追加しても増えない');
+
+// 昇順に保たれる
+Store.addCompanyHoliday('2026-08-12');
+Store.addCompanyHoliday('2026-12-30');
+Store.addCompanyHoliday('2026-08-13');
+is(Store.listCompanyHolidays().map(function (v) { return Store.ymdTextFromSerial(v); }).join(','),
+   '2026-08-12,2026-08-13,2026-08-14,2026-12-30', 'あとから足しても日付の昇順に並ぶ');
+
+// 過去日も登録できる（CLAUDE.md 5.8）
+Store.addCompanyHoliday('2020-01-06');
+is(Store.ymdTextFromSerial(Store.listCompanyHolidays()[0]), '2020-01-06', '過去日も登録でき、先頭に来る');
+
+// 一覧はコピーなので、外から書き換えても中身は変わらない
+var copy = Store.listCompanyHolidays();
+copy.push(999999);
+is(Store.listCompanyHolidays().length, 5, '一覧はコピーを返す（外から増やせない）');
+
+throws(function () { Store.addCompanyHoliday('2026/08/14'); }, 'YYYY-MM-DD',
+       '不正な日付形式は拒否');
+throws(function () { Store.addCompanyHoliday('2026-02-31'); }, 'YYYY-MM-DD',
+       '存在しない日付は拒否');
+throws(function () { Store.addCompanyHoliday(''); }, 'YYYY-MM-DD', '空文字は拒否');
+
+// 削除
+Store.removeCompanyHoliday(ch1);
+is(Store.isCompanyHoliday(Store.dayIndexFromYmd(2026, 8, 14)), false, '社休日を削除できる');
+is(Store.listCompanyHolidays().length, 4, '削除すると1件減る');
+Store.removeCompanyHoliday(ch1);
+is(Store.listCompanyHolidays().length, 4, '無い日付を消しても件数は変わらない');
+throws(function () { Store.removeCompanyHoliday('x'); }, '社休日の指定', '数値でない指定は拒否');
+
+/* ---- 社休日は営業日から外れる（CLAUDE.md 5.2） ---- */
+group('社休日と［7営業日］');
+
+Store.listCompanyHolidays().forEach(function (v) { Store.removeCompanyHoliday(v); });
+is(Store.listCompanyHolidays().length, 0, '検証のためいったん空にする');
+
+// 2026-08-17(月)〜 は祝日が無いので、社休日が無ければ幅は9日
+is(bizWidth('2026-08-17', 7, holidays), 9, '社休日が無ければ9日のまま');
+is(Store.isBusinessDay(Store.dayIndexFromYmd(2026, 8, 19), holidays), true,
+   '社休日にする前は営業日');
+
+Store.addCompanyHoliday('2026-08-19');
+is(Store.isBusinessDay(Store.dayIndexFromYmd(2026, 8, 19), holidays), false,
+   '社休日は営業日でない');
+is(bizWidth('2026-08-17', 7, holidays), 10, '期間内に社休日が1日あると10日に伸びる');
+
+Store.addCompanyHoliday('2026-08-20');
+is(bizWidth('2026-08-17', 7, holidays), 11, '社休日が2日あると11日に伸びる');
+
+// 祝日と社休日が同じ日でも二重に数えない
+Store.addCompanyHoliday('2026-08-11');
+is(Store.isBusinessDay(Store.dayIndexFromYmd(2026, 8, 11), holidays), false,
+   '祝日と社休日が重なっても営業日でない');
+
+// 後片付け
+Store.listCompanyHolidays().forEach(function (v) { Store.removeCompanyHoliday(v); });
+is(Store.listCompanyHolidays().length, 0, '検証で追加した社休日を片付けた');
+
+/* ============================================================
  * 9. 案件の CRUD（CLAUDE.md 5.7）
  * ============================================================ */
 group('案件の新規追加');
@@ -566,7 +642,7 @@ group('JSONの書き出し・読み込み');
 
 var json = Store.exportJson();
 var parsed = JSON.parse(json);
-is(parsed.dataVersion, 5, '書き出したJSONにdataVersionが入る');
+is(parsed.dataVersion, 6, '書き出したJSONにdataVersionが入る');
 is(parsed.departments.length, 1, '部署が書き出される');
 is(parsed.members.length, 1, '担当者が書き出される');
 is(parsed.projects.length, 1, '案件が書き出される');
@@ -606,14 +682,14 @@ function sample(overrides) {
 }
 
 var m = Store.migrate(sample());
-is(m.dataVersion, 5, 'dataVersionが5になる');
+is(m.dataVersion, 6, 'dataVersionが6になる');
 is(m.members[0].countText, '', '省略された自由項目は空文字で補われる');
 is(m.members[0].emoji, '', 'emojiも空文字で補われる');
 is(m.projects[0].bars[0].clsCheck, false, '省略された囲い点線はOFFで補われる');
 is(m.projects[0].bars[0].markColor, 'default', '省略された文字色は既定色で補われる');
 
 // dataVersion 省略は現行版として扱う
-is(Store.migrate(sample({ dataVersion: undefined })).dataVersion, 5, 'dataVersion省略は現行版扱い');
+is(Store.migrate(sample({ dataVersion: undefined })).dataVersion, 6, 'dataVersion省略は現行版扱い');
 
 // 一覧に無い文字色は既定色に直す
 is(Store.migrate(sample({
@@ -685,7 +761,7 @@ var v1 = Store.migrate(sampleV1([
 ]));
 var v1bars = v1.projects[0].bars;
 
-is(v1.dataVersion, 5, '読み込むとdataVersionが5になる');
+is(v1.dataVersion, 6, '読み込むとdataVersionが6になる');
 is(v1bars[0].stage, '修正', '工程「再校」が「修正」になる');
 is(v1bars[0].stageNo, 3, '再校の番号3が修正3として引き継がれる');
 is(Store.barLabel(v1bars[0]), '修正3', 'ラベルが「修正3」になる');
@@ -728,7 +804,7 @@ var v2 = Store.migrate({
     ]
   }]
 });
-is(v2.dataVersion, 5, 'dataVersion 2 のデータは5になる');
+is(v2.dataVersion, 6, 'dataVersion 2 のデータは6になる');
 is(v2.projects[0].bars[0].markColor, 'default', 'markColorが無ければ既定色が入る');
 is(v2.projects[0].bars[1].markColor, 'default', '入稿にも既定色が入る');
 is(v2.projects[0].bars[0].clsCheck, true, 'v2で付けた囲い点線はそのまま残る');
@@ -763,7 +839,7 @@ var single = Store.migrate(sampleV3([{
            markColor: 'white', start: 4802, end: 4809 }]
 }]));
 
-is(single.dataVersion, 5, 'dataVersionが5になる');
+is(single.dataVersion, 6, 'dataVersionが6になる');
 is(single.projects.length, 1, '担当1名の案件は1件のまま');
 is(single.projects[0].id, 'p1', '案件IDはそのまま引き継がれる');
 is(single.projects[0].assigneeId, mA, 'assigneeIdに担当者が入る');
@@ -865,7 +941,7 @@ var v4 = Store.migrate({
     { id: 'p2', title: 'v4の案件2', assigneeId: memberId, hidden: true, order: 2, bars: [] }
   ]
 });
-is(v4.dataVersion, 5, 'dataVersion 4 のデータは5になる');
+is(v4.dataVersion, 6, 'dataVersion 4 のデータは6になる');
 is(v4.projects[0].note, '', 'note が無い案件には空文字が付く');
 is(v4.projects[1].note, '', '2件目にも空文字が付く');
 is(v4.projects[0].title, 'v4の案件', 'タイトルは変わらない');
@@ -915,10 +991,81 @@ is(Store.findProject(noteProj.id).note, '', '制作メモを空にできる');
 // 書き出し → 読み込みで往復すること
 Store.updateProject(noteProj.id, { note: '再入稿あり' });
 var noteJson = Store.exportJson();
-is(JSON.parse(noteJson).dataVersion, 5, '書き出したJSONの dataVersion が5になる');
+is(JSON.parse(noteJson).dataVersion, 6, '書き出したJSONの dataVersion が6になる');
 Store.setData(Store.createEmptyData());
 Store.importJson(noteJson);
 is(Store.getData().projects[0].note, '再入稿あり', '制作メモが読み込みで復元される');
+
+Store.setData(Store.createEmptyData());
+
+/* ============================================================
+ * 15-e. dataVersion 5 → 6 の変換（社休日の追加 / CLAUDE.md 11 の v2.16）
+ * ============================================================ */
+group('migrate: dataVersion 5 からの変換（社休日の追加）');
+
+function sampleV5(extra) {
+  var base = {
+    dataVersion: 5,
+    departments: [{ id: deptId, name: '制作', order: 1 }],
+    members: [{ id: memberId, deptId: deptId, name: '宮地 太郎', order: 1 }],
+    projects: [{ id: 'p1', title: 'v5の案件', note: '', assigneeId: memberId,
+                 hidden: false, order: 1, bars: [] }]
+  };
+  return Object.assign(base, extra || {});
+}
+
+var v5 = Store.migrate(sampleV5());
+is(v5.dataVersion, 6, 'dataVersion 5 のデータは6になる');
+ok(Array.isArray(v5.companyHolidays), 'companyHolidays が配列で付く');
+is(v5.companyHolidays.length, 0, '社休日が無いデータには空配列が付く');
+is(v5.projects[0].title, 'v5の案件', '案件はそのまま引き継がれる');
+is(Store.notes().length, 0, '空配列の付与では通知を出さない（黙って補う）');
+
+// 旧版（dataVersion 1）から一気に上げても付く
+is(Store.migrate(sampleV1([
+  { id: 'b1', stage: 'ラフ', stageNo: 1, status: '未着手', start: 4802, end: 4803 }
+])).companyHolidays.length, 0, '旧版から上げても空の社休日が付く');
+
+// すでに入っている社休日は、昇順・重複なしにそろえて引き継ぐ
+var aug12 = Store.serialFromYmd(2026, 8, 12, Store.AM);
+var aug14 = Store.serialFromYmd(2026, 8, 14, Store.AM);
+var dec30 = Store.serialFromYmd(2026, 12, 30, Store.AM);
+
+var chKept = Store.migrate(sampleV5({ dataVersion: 6, companyHolidays: [dec30, aug12, aug14] }));
+is(chKept.companyHolidays.join(','), [aug12, aug14, dec30].join(','), '社休日を日付の昇順に並べ替える');
+
+var chDup = Store.migrate(sampleV5({ dataVersion: 6, companyHolidays: [aug12, aug12, aug14] }));
+is(chDup.companyHolidays.length, 2, '重複した社休日を取り除く');
+ok(Store.notes().join('').indexOf('社休日の重複') >= 0, '重複を取り除いたことがnotesに残る');
+
+// 午後（奇数）の値が入っていても午前にそろえる
+is(Store.migrate(sampleV5({ dataVersion: 6, companyHolidays: [aug12 + 1] })).companyHolidays[0],
+   aug12, '午後の値は午前にそろえる');
+
+// 日付として読めない値は捨てる
+var chBad = Store.migrate(sampleV5({ dataVersion: 6, companyHolidays: [aug12, 'x', null] }));
+is(chBad.companyHolidays.length, 1, '数値でない社休日は取り除く');
+ok(Store.notes().join('').indexOf('読めない') >= 0, '取り除いたことがnotesに残る');
+
+// 配列ですらない場合は空にする
+is(Store.migrate(sampleV5({ dataVersion: 6, companyHolidays: 'x' })).companyHolidays.length, 0,
+   '配列でない社休日は空にする');
+
+// 書き出し → 読み込みで往復すること
+Store.setData(Store.createEmptyData());
+var chDept = Store.addDepartment('制作');
+var chMember = Store.addMember(chDept.id, '宮地 太郎');
+Store.addProject(chMember.id);
+Store.addCompanyHoliday('2026-08-14');
+Store.addCompanyHoliday('2026-08-12');
+var chJson = Store.exportJson();
+is(JSON.parse(chJson).dataVersion, 6, '書き出したJSONの dataVersion が6になる');
+is(JSON.parse(chJson).companyHolidays.length, 2, '書き出したJSONに社休日が入る');
+Store.setData(Store.createEmptyData());
+is(Store.listCompanyHolidays().length, 0, 'いったん空にできる');
+Store.importJson(chJson);
+is(Store.listCompanyHolidays().map(function (v) { return Store.ymdTextFromSerial(v); }).join(','),
+   '2026-08-12,2026-08-14', '社休日が読み込みで復元される');
 
 Store.setData(Store.createEmptyData());
 
