@@ -289,6 +289,18 @@ body.is-dragging-modal { user-select: none; }
 }
 
 .settings__input--grow   { flex: 1 1 120px; min-width: 90px; }
+.settings__input--date   { flex: 0 0 auto; }
+
+/*
+ * 入力欄と同じ見た目のまま、書き換えられない表示（社休日の一覧 / CLAUDE.md 5.8）。
+ * 日付は追加と削除だけなので、行の高さを他の一覧とそろえるためだけに使います。
+ */
+.settings__static {
+  display: flex;
+  align-items: center;
+  color: var(--c-text-sub);
+  background: var(--c-bg-sub);
+}
 .settings__input--narrow { flex: 0 0 68px; width: 68px; }
 .settings__input--dept   { flex: 0 0 120px; width: 120px; }
 .settings__input--emoji  { flex: 0 0 76px; width: 76px; }

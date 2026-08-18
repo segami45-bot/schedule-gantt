@@ -277,6 +277,32 @@ var Popup = (function () {
   }
 
   /* ------------------------------------------------------------
+   * 社休日の一覧（CLAUDE.md 5.8）
+   * ------------------------------------------------------------ */
+
+  // 「2026-08-14（金）」の形にする
+  function holidayLabel(serial) {
+    var dayIndex = Store.dayIndexFromSerial(serial);
+    var dow = Store.dateFromDayIndex(dayIndex).getDay();
+    return Store.ymdTextFromSerial(serial) + '（' + Render.WEEKDAY_LABELS[dow] + '）';
+  }
+
+  function buildHolidayRow(serial) {
+    var row = el('div', 'settings__row');
+    row.appendChild(el('span', 'settings__input settings__input--grow settings__static',
+                       holidayLabel(serial)));
+
+    var del = el('button', 'settings__delete', '削除');
+    del.type = 'button';
+    del.addEventListener('click', function () {
+      run(function () { Store.removeCompanyHoliday(serial); }, true);
+    });
+    row.appendChild(del);
+
+    return row;
+  }
+
+  /* ------------------------------------------------------------
    * 一覧の組み立て
    * ------------------------------------------------------------ */
 
@@ -304,6 +330,18 @@ var Popup = (function () {
       // 部署ごとにまとめず、登録順に並べます（並び替えUIはV2）
       members.forEach(function (member) {
         parts.memberList.appendChild(buildMemberRow(member));
+      });
+    }
+
+    // ---- 社休日（CLAUDE.md 5.8）----
+    parts.holidayList.innerHTML = '';
+    var holidays = Store.listCompanyHolidays();
+    if (holidays.length === 0) {
+      parts.holidayList.appendChild(el('p', 'settings__empty', 'まだ社休日がありません。'));
+    } else {
+      // 日付の昇順（Store が昇順で保持しています）
+      holidays.forEach(function (serial) {
+        parts.holidayList.appendChild(buildHolidayRow(serial));
       });
     }
 
@@ -404,6 +442,37 @@ var Popup = (function () {
     memberAddRow.appendChild(parts.memberAdd);
     memberSection.appendChild(memberAddRow);
     body.appendChild(memberSection);
+
+    /* ---- 社休日（CLAUDE.md 5.8） ----
+     * 会社の休業日。登録すると列の色が日祝と同じ赤系になり、
+     * ［7営業日］の営業日からも外れます（CLAUDE.md 5.2 / 5.3）。
+     */
+    var holidaySection = section('社休日');
+    holidaySection.appendChild(el('p', 'settings__hint',
+      '会社の休業日です。列の色が日曜・祝日と同じになり、［7営業日］の日数からも外れます。'));
+    parts.holidayList = el('div', 'settings__list');
+    holidaySection.appendChild(parts.holidayList);
+
+    var holidayAddRow = el('div', 'settings__add');
+    parts.holidayDate = el('input', 'settings__input settings__input--date');
+    parts.holidayDate.type = 'date';
+    parts.holidayAdd = el('button', 'settings__add-button', '社休日を追加');
+    parts.holidayAdd.type = 'button';
+
+    function addHoliday() {
+      // 同じ日付をもう一度追加しても、Store 側で無視されます（CLAUDE.md 5.8）
+      var ok = run(function () { Store.addCompanyHoliday(parts.holidayDate.value); }, true);
+      if (ok) { parts.holidayDate.value = ''; }
+    }
+    parts.holidayAdd.addEventListener('click', addHoliday);
+    parts.holidayDate.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); addHoliday(); }
+    });
+
+    holidayAddRow.appendChild(parts.holidayDate);
+    holidayAddRow.appendChild(parts.holidayAdd);
+    holidaySection.appendChild(holidayAddRow);
+    body.appendChild(holidaySection);
 
     dialog.appendChild(body);
     document.body.appendChild(dialog);

@@ -76,7 +76,9 @@ var Render = (function () {
       // 日曜・祝日は赤系
       isOff: dow === 0 || holidayName !== null,
       // 土曜は水色系。ただし祝日と重なった日は祝日（赤）を優先する
-      isSat: dow === 6 && holidayName === null
+      isSat: dow === 6 && holidayName === null,
+      // 社休日（会社の休業日 / CLAUDE.md 5.3）。日付ヘッダには出さない
+      isCompanyOff: Store.isCompanyHoliday(dayIndex)
     };
   }
 
@@ -90,9 +92,13 @@ var Render = (function () {
     return days;
   }
 
-  // 優先順位: 今日（黄）> 日曜・祝日（赤）> 土曜（水色）
-  function cellClass(base, info) {
-    var cls = base;
+  /*
+   * 日付ヘッダのセルに付けるクラス（CLAUDE.md 5.3）。
+   * 優先順位: 今日（黄）> 日曜・祝日（赤）> 土曜（水色）。
+   * 社休日はここに含めません。暦の上では平日だと分かるようにするためです。
+   */
+  function calCellClass(info) {
+    var cls = 'cal__cell';
     if (info.isToday) {
       cls += ' is-today';
     } else if (info.isOff) {
@@ -103,10 +109,26 @@ var Render = (function () {
     return cls;
   }
 
+  /*
+   * 列の色（日付ヘッダを除く列全体）に付けるクラス（CLAUDE.md 5.3）。
+   * 社休日は日曜・祝日と同じ赤系にし、土曜と重なった日は赤系を優先します。
+   */
+  function stripeCellClass(info) {
+    var cls = 'stripes__cell';
+    if (info.isToday) {
+      cls += ' is-today';
+    } else if (info.isOff || info.isCompanyOff) {
+      cls += ' is-off';
+    } else if (info.isSat) {
+      cls += ' is-sat';
+    }
+    return cls;
+  }
+
   function buildCalendar(days) {
     var cal = el('div', 'cal');
     days.forEach(function (info) {
-      var cell = el('div', cellClass('cal__cell', info));
+      var cell = el('div', calCellClass(info));
       cell.appendChild(el('div', 'cal__date', info.month + '/' + info.day));
       cell.appendChild(el('div', 'cal__dow', WEEKDAY_LABELS[info.dow]));
       cal.appendChild(cell);
@@ -118,7 +140,7 @@ var Render = (function () {
   function buildStripes(days) {
     var stripes = el('div', 'stripes');
     days.forEach(function (info) {
-      stripes.appendChild(el('div', cellClass('stripes__cell', info)));
+      stripes.appendChild(el('div', stripeCellClass(info)));
     });
     return stripes;
   }
@@ -880,6 +902,7 @@ var Render = (function () {
     edgeLimits: edgeLimits,
     handleWidth: handleWidth,
     statusLabel: statusLabel,
+    WEEKDAY_LABELS: WEEKDAY_LABELS,
     STATUS_KEYS: STATUS_KEYS,
     MARK_KEYS: MARK_KEYS
   };
