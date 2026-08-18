@@ -305,6 +305,74 @@ body.is-dragging-modal { user-select: none; }
 .settings__input--dept   { flex: 0 0 120px; width: 120px; }
 .settings__input--emoji  { flex: 0 0 76px; width: 76px; }
 
+/* ============================================================
+ * 並び替えの▲▼（CLAUDE.md 5.14）
+ * 設定モーダルの部署・担当者の行と、案件行のラベルで共通に使います。
+ * ============================================================ */
+.movebtns {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 2px;
+}
+
+.movebtn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--c-text-sub);
+  border-radius: 3px;
+}
+
+.movebtn:hover:not(:disabled) {
+  color: var(--c-text);
+  background: #e2e6ea;
+}
+
+/* 端（いちばん上の▲・いちばん下の▼）は押せないことを薄さで示す */
+.movebtn:disabled {
+  color: #d2d5d8;
+  background: var(--c-bg);
+  border-color: var(--c-border);
+  cursor: default;
+}
+
+/*
+ * 案件行の▲▼（CLAUDE.md 5.14）。
+ * 行にポインタが乗っている間だけ、ラベルの右端に出します。
+ * 絶対配置にしているのは、タイトルの表示幅を常時削らないためです。
+ * 背景は行と同じ色にして、下のタイトルが透けないようにします。
+ */
+.movebtns--row {
+  position: absolute;
+  right: 4px;
+  top: 0;
+  bottom: 0;
+  align-items: center;
+  padding-left: 6px;
+  background: var(--row-project-bg);
+  opacity: 0;
+  transition: opacity .12s ease;
+  pointer-events: none;
+}
+
+.gantt__label-body .row--project { position: relative; }
+
+.gantt__label-body .row--project:hover .movebtns--row {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 行のホバー色に背景をそろえる（CLAUDE.md 5.14 はホバー中のみ表示） */
+.gantt__label-body .row--project.is-clickable:hover .movebtns--row { background: #eef4fb; }
+
+.movebtns--row .movebtn {
+  width: 18px;
+  height: 16px;
+  background: var(--c-bg);
+}
+
 .settings__delete {
   flex: 0 0 auto;
   padding: 4px 10px;

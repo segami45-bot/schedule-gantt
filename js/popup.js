@@ -137,10 +137,39 @@ var Popup = (function () {
   }
 
   /* ------------------------------------------------------------
+   * 並び替えの▲▼（CLAUDE.md 5.14）
+   * ------------------------------------------------------------ */
+
+  /*
+   * 1つ上へ／1つ下へ動かすボタンの組を作ります。
+   * 端（いちばん上の▲・いちばん下の▼）は押せない見た目にします。
+   * onMove(delta) の delta は -1（上へ）か 1（下へ）。
+   */
+  function buildMoveButtons(canUp, canDown, onMove) {
+    var box = el('span', 'movebtns');
+    [
+      { label: '▲', delta: -1, enabled: canUp, title: '1つ上へ' },
+      { label: '▼', delta: 1, enabled: canDown, title: '1つ下へ' }
+    ].forEach(function (spec) {
+      var button = el('button', 'movebtn', spec.label);
+      button.type = 'button';
+      button.title = spec.title;
+      button.setAttribute('aria-label', spec.title);
+      button.disabled = !spec.enabled;
+      button.addEventListener('click', function (e) {
+        e.stopPropagation();
+        onMove(spec.delta);
+      });
+      box.appendChild(button);
+    });
+    return box;
+  }
+
+  /* ------------------------------------------------------------
    * 部署の一覧（CLAUDE.md 5.8）
    * ------------------------------------------------------------ */
 
-  function buildDeptRow(dept) {
+  function buildDeptRow(dept, index, total) {
     var row = el('div', 'settings__row');
 
     // 改名: 入力から外れた時点で保存する
@@ -153,6 +182,11 @@ var Popup = (function () {
     row.appendChild(nameInput);
 
     row.appendChild(el('span', 'settings__note', Store.listMembers(dept.id).length + '人'));
+
+    // 並び替え（CLAUDE.md 5.14）
+    row.appendChild(buildMoveButtons(index > 0, index < total - 1, function (delta) {
+      run(function () { Store.moveDepartment(dept.id, delta); }, true);
+    }));
 
     var del = el('button', 'settings__delete', '削除');
     del.type = 'button';
@@ -222,7 +256,7 @@ var Popup = (function () {
    * 名前・所属部署・案件数テキスト・絵文字・一言コメントを、その場で編集できます。
    * 案件数・絵文字・コメントは手動入力の自由項目で、空でも構いません（CLAUDE.md 4.3）。
    */
-  function buildMemberRow(member) {
+  function buildMemberRow(member, index, total) {
     var row = el('div', 'settings__row');
 
     /*
@@ -259,6 +293,11 @@ var Popup = (function () {
     var commentInput = input('settings__input settings__input--grow', member.comment, '一言コメント');
     bind(commentInput, 'comment');
     row.appendChild(commentInput);
+
+    // 並び替え。同じ部署の中でだけ動きます（CLAUDE.md 5.14）
+    row.appendChild(buildMoveButtons(index > 0, index < total - 1, function (delta) {
+      run(function () { Store.moveMember(member.id, delta); }, true);
+    }));
 
     var del = el('button', 'settings__delete', '削除');
     del.type = 'button';
@@ -314,8 +353,8 @@ var Popup = (function () {
     if (departments.length === 0) {
       parts.deptList.appendChild(el('p', 'settings__empty', 'まだ部署がありません。'));
     } else {
-      departments.forEach(function (dept) {
-        parts.deptList.appendChild(buildDeptRow(dept));
+      departments.forEach(function (dept, i) {
+        parts.deptList.appendChild(buildDeptRow(dept, i, departments.length));
       });
     }
 
@@ -327,9 +366,15 @@ var Popup = (function () {
     } else if (members.length === 0) {
       parts.memberList.appendChild(el('p', 'settings__empty', 'まだ担当者がいません。'));
     } else {
-      // 部署ごとにまとめず、登録順に並べます（並び替えUIはV2）
-      members.forEach(function (member) {
-        parts.memberList.appendChild(buildMemberRow(member));
+      /*
+       * ガント側と同じ並び（部署ごと・部署の中は担当者の順）で出します。
+       * ▲▼が入れ替える相手を「すぐ隣に見えている行」にそろえるためです（CLAUDE.md 5.14）。
+       */
+      departments.forEach(function (dept) {
+        var list = Store.listMembers(dept.id);
+        list.forEach(function (member, i) {
+          parts.memberList.appendChild(buildMemberRow(member, i, list.length));
+        });
       });
     }
 

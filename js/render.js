@@ -558,8 +558,13 @@ var Render = (function () {
       rows.push({ kind: 'dept', dept: dept });
       Store.listMembers(dept.id).forEach(function (member) {
         rows.push({ kind: 'member', member: member });
-        Store.listProjects(member.id, showHidden).forEach(function (project) {
-          rows.push({ kind: 'project', project: project, member: member });
+        // index / total は案件の▲▼の有効・無効に使う（CLAUDE.md 5.14）
+        var projects = Store.listProjects(member.id, showHidden);
+        projects.forEach(function (project, i) {
+          rows.push({
+            kind: 'project', project: project, member: member,
+            index: i, total: projects.length
+          });
         });
       });
     });
@@ -643,6 +648,31 @@ var Render = (function () {
   }
 
   /*
+   * 並び替えの▲▼ボタン（CLAUDE.md 5.14）。
+   * 端（いちばん上の▲・いちばん下の▼）は押せない見た目にします。
+   * クリックは行のクリック（5.6）に伝えません。
+   */
+  function buildMoveButtons(canUp, canDown, onMove) {
+    var box = el('span', 'movebtns movebtns--row');
+    [
+      { label: '▲', delta: -1, enabled: canUp, title: '1つ上へ' },
+      { label: '▼', delta: 1, enabled: canDown, title: '1つ下へ' }
+    ].forEach(function (spec) {
+      var button = el('button', 'movebtn', spec.label);
+      button.type = 'button';
+      button.title = spec.title;
+      button.setAttribute('aria-label', spec.title);
+      button.disabled = !spec.enabled;
+      button.addEventListener('click', function (e) {
+        e.stopPropagation();
+        onMove(spec.delta);
+      });
+      box.appendChild(button);
+    });
+    return box;
+  }
+
+  /*
    * 担当者ヘッダの編集できる項目を1つ作ります（CLAUDE.md 5.13）。
    * 値が空のときは薄いプレースホルダーを出し、クリックできる幅を確保します。
    * クリックすると popup.js の編集処理を呼びます。
@@ -709,6 +739,19 @@ var Render = (function () {
     var titleNode = el('span', 'project__title', title);
     if (!row.project.title) { titleNode.className += ' is-untitled'; }
     node.appendChild(titleNode);
+
+    /*
+     * 並び替えの▲▼（CLAUDE.md 5.14）。
+     * 行にポインタが乗っている間だけ、ラベルの右端に出します（表示の制御はCSS）。
+     * 押しても案件ポップアップ（5.6）は開きません。
+     */
+    if (handlers.onMoveProject) {
+      node.appendChild(buildMoveButtons(
+        row.index > 0,
+        row.index < row.total - 1,
+        function (delta) { handlers.onMoveProject(row.project.id, delta); }
+      ));
+    }
     return node;
   }
 
@@ -767,6 +810,7 @@ var Render = (function () {
    *   onOpenBar      … バーがクリックされたとき（CLAUDE.md 5.11）
    *   onCreateBarAt  … 案件行の空白セルがクリックされたとき（CLAUDE.md 5.5）
    *   onAddProject   … 担当者ヘッダの「＋」が押されたとき（CLAUDE.md 5.7）
+   *   onMoveProject  … 案件行の▲▼が押されたとき（CLAUDE.md 5.14）
    *   onBarChange    … バーのドラッグ移動が確定したとき（CLAUDE.md 5.10）
    * ============================================================ */
   function draw(root, view, options) {

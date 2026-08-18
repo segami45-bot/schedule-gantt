@@ -1151,6 +1151,143 @@ is(Store.listProjects(mA.id).length, 2, '同じ担当者に複数案件を持て
 is(Store.listProjects(mB.id).length, 0, '別の担当者には出ない');
 
 /* ============================================================
+ * 17. 並び替え（CLAUDE.md 5.14）
+ * ============================================================ */
+group('並び替え: 部署');
+
+Store.setData(Store.createEmptyData());
+var sortA = Store.addDepartment('A');
+var sortB = Store.addDepartment('B');
+var sortC = Store.addDepartment('C');
+
+function deptNames() {
+  return Store.listDepartments().map(function (d) { return d.name; }).join(',');
+}
+
+is(deptNames(), 'A,B,C', '登録順に並んでいる');
+is(Store.moveDepartment(sortC.id, -1), true, '上へ動かすと true が返る');
+is(deptNames(), 'A,C,B', '部署を1つ上へ動かせる');
+is(Store.moveDepartment(sortC.id, 1), true, '下へも動かせる');
+is(deptNames(), 'A,B,C', '元に戻る');
+
+is(Store.moveDepartment(sortA.id, -1), false, '最上段の▲は何もしない（false）');
+is(deptNames(), 'A,B,C', '最上段の▲では並びが変わらない');
+is(Store.moveDepartment(sortC.id, 1), false, '最下段の▼は何もしない（false）');
+is(deptNames(), 'A,B,C', '最下段の▼では並びが変わらない');
+
+throws(function () { Store.moveDepartment('無い', -1); }, '部署が見つかりません',
+       '無い部署の並び替えは拒否');
+
+// order が重複・欠番でも、表示順のまま連番に直してから入れ替える（CLAUDE.md 5.14）
+Store.listDepartments().forEach(function (d) { d.order = 7; }); // わざと全部同じにする
+Store.moveDepartment(sortB.id, -1);
+is(Store.listDepartments().map(function (d) { return d.order; }).join(','), '1,2,3',
+   'order が重複していても 1..n の連番に直る');
+is(deptNames(), 'B,A,C', '正規化したうえで入れ替わる');
+Store.moveDepartment(sortB.id, 1); // 元に戻す
+is(deptNames(), 'A,B,C', '戻せる');
+
+group('並び替え: 担当者');
+
+var sortM1 = Store.addMember(sortA.id, '甲');
+var sortM2 = Store.addMember(sortA.id, '乙');
+var sortM3 = Store.addMember(sortA.id, '丙');
+var sortOther = Store.addMember(sortB.id, '別部署の人');
+
+function memberNames(deptId) {
+  return Store.listMembers(deptId).map(function (m) { return m.name; }).join(',');
+}
+
+is(memberNames(sortA.id), '甲,乙,丙', '登録順に並んでいる');
+Store.moveMember(sortM3.id, -1);
+is(memberNames(sortA.id), '甲,丙,乙', '担当者を1つ上へ動かせる');
+Store.moveMember(sortM3.id, 1);
+is(memberNames(sortA.id), '甲,乙,丙', '下へも動かせる');
+
+is(Store.moveMember(sortM1.id, -1), false, '部署の中で最上段なら▲は効かない');
+is(Store.moveMember(sortM3.id, 1), false, '部署の中で最下段なら▼は効かない');
+
+// 所属部署が1人だけの担当者は動かせない
+is(Store.moveMember(sortOther.id, -1), false, '1人だけの部署では▲が効かない');
+is(Store.moveMember(sortOther.id, 1), false, '1人だけの部署では▼が効かない');
+is(memberNames(sortB.id), '別部署の人', '別部署の担当者は巻き込まれない');
+
+throws(function () { Store.moveMember('無い', -1); }, '担当者が見つかりません',
+       '無い担当者の並び替えは拒否');
+
+group('並び替え: 案件');
+
+var sortP1 = Store.addProject(sortM1.id);
+var sortP2 = Store.addProject(sortM1.id);
+var sortP3 = Store.addProject(sortM1.id);
+var sortQ1 = Store.addProject(sortM2.id);
+Store.updateProject(sortP1.id, { title: 'P1' });
+Store.updateProject(sortP2.id, { title: 'P2' });
+Store.updateProject(sortP3.id, { title: 'P3' });
+Store.updateProject(sortQ1.id, { title: 'Q1' });
+
+function projectTitles(memberId, includeHidden) {
+  return Store.listProjects(memberId, includeHidden)
+    .map(function (p) { return p.title; }).join(',');
+}
+
+is(projectTitles(sortM1.id), 'P1,P2,P3', '登録順に並んでいる');
+Store.moveProject(sortP3.id, -1, true);
+is(projectTitles(sortM1.id, true), 'P1,P3,P2', '案件を1つ上へ動かせる');
+Store.moveProject(sortP3.id, 1, true);
+is(projectTitles(sortM1.id, true), 'P1,P2,P3', '下へも動かせる');
+
+is(Store.moveProject(sortP1.id, -1, true), false, '最上段の▲は効かない');
+is(Store.moveProject(sortP3.id, 1, true), false, '最下段の▼は効かない');
+
+// 別の担当者の案件は巻き込まない（CLAUDE.md 5.14 同一担当者内でのみ）
+is(projectTitles(sortM2.id, true), 'Q1', '別の担当者の案件はそのまま');
+is(Store.moveProject(sortQ1.id, 1, true), false, '1件だけの担当者では▼が効かない');
+
+throws(function () { Store.moveProject('無い', -1, true); }, '案件が見つかりません',
+       '無い案件の並び替えは拒否');
+
+/* ---- 非表示の案件をまたぐ入れ替え（「非表示を表示」が OFF のとき） ---- */
+Store.toggleHidden(sortP2.id); // P2 を非表示にする
+is(projectTitles(sortM1.id, false), 'P1,P3', '非表示の案件は画面に出ない');
+
+// 画面では P1 の次が P3。▲を押したら P1 と入れ替わってほしい
+Store.moveProject(sortP3.id, -1, false);
+is(projectTitles(sortM1.id, false), 'P3,P1', '隠れている案件を飛び越えて入れ替わる');
+ok(Store.listProjects(sortM1.id, true).map(function (p) { return p.order; })
+   .every(function (v, i, arr) { return i === 0 || arr[i - 1] < v; }),
+   '入れ替えたあとも order が重複していない');
+
+// 「非表示を表示」が ON なら隠れていた案件も含めて隣と入れ替わる
+Store.moveProject(sortP1.id, 1, true);
+is(projectTitles(sortM1.id, true).split(',').length, 3, 'ON のときは3件すべてが対象');
+Store.toggleHidden(sortP2.id); // 後片付け
+
+group('並び替え: order の正規化');
+
+Store.setData(Store.createEmptyData());
+var nDept = Store.addDepartment('制作');
+var nM = Store.addMember(nDept.id, '甲');
+var nP1 = Store.addProject(nM.id);
+var nP2 = Store.addProject(nM.id);
+Store.updateProject(nP1.id, { title: '1' });
+Store.updateProject(nP2.id, { title: '2' });
+
+// order が欠番・逆順・0 でも壊れない
+Store.findProject(nP1.id).order = 0;
+Store.findProject(nP2.id).order = 99;
+Store.moveProject(nP2.id, -1, true);
+is(projectTitles(nM.id, true), '2,1', '欠番があっても入れ替えられる');
+is(Store.listProjects(nM.id, true).map(function (p) { return p.order; }).join(','), '1,2',
+   '入れ替えのあと order が 1..n の連番になる');
+
+is(Store.normalizeOrders([{ order: 5 }, { order: 5 }, { order: 5 }])
+   .map(function (x) { return x.order; }).join(','), '1,2,3',
+   'normalizeOrders は渡した順に 1..n を振る');
+
+Store.setData(Store.createEmptyData());
+
+/* ============================================================
  * 結果
  * ============================================================ */
 console.log('\n----------------------------------------');

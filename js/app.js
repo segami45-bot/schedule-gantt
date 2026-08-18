@@ -42,6 +42,8 @@
       onEditMemberField: Popup.editMemberField,
       // 担当者ヘッダの「＋」で新規案件（CLAUDE.md 5.7）
       onAddProject: Popup.addProject,
+      // 案件行の▲▼で並び替え（CLAUDE.md 5.14）
+      onMoveProject: moveProject,
       // バーのドラッグ移動が確定したら描き直す（CLAUDE.md 5.10）
       onBarChange: redraw
     });
@@ -104,6 +106,21 @@
       dayCount: Store.clampDayCount(endIdx - startIdx + 1),
       showHidden: view.showHidden
     });
+  }
+
+  /*
+   * 案件行の▲▼（CLAUDE.md 5.14）。
+   * 同じ担当者の中でだけ動きます。「非表示を表示」が OFF のときは、
+   * 画面に出ている案件どうしで入れ替えます（隠れている行は飛び越える）。
+   */
+  function moveProject(projectId, delta) {
+    try {
+      Store.moveProject(projectId, delta, view.showHidden);
+    } catch (e) {
+      window.alert(e.message);
+      return;
+    }
+    redraw();
   }
 
   // 「非表示を表示」トグル（CLAUDE.md 5.4）

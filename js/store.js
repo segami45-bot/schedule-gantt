@@ -922,6 +922,80 @@
   }
 
   /* ============================================================
+   * 並び替え（CLAUDE.md 5.14）
+   *
+   * order は同じ階層の中の並び順です。
+   * 過去の migrate で重複や欠番が生じている可能性があるため、
+   * 入れ替える前に「現在の表示順で 1..n の連番」に振り直してから交換します。
+   * ============================================================ */
+
+  // 表示順に並べた配列の order を 1..n の連番に振り直す
+  function normalizeOrders(list) {
+    list.forEach(function (item, i) { item.order = i + 1; });
+    return list;
+  }
+
+  function indexOfId(list, id) {
+    var index = -1;
+    list.forEach(function (item, i) { if (item.id === id) { index = i; } });
+    return index;
+  }
+
+  /*
+   * visibleList（画面に並んでいる順）の中で id の項目を delta だけ動かします。
+   *   delta < 0 … 上へ（▲） / delta >= 0 … 下へ（▼）
+   * 端にいるときは何もせず false を返します（ボタンは無効表示にする想定）。
+   *
+   * fullList は同じ階層のすべての項目（表示順）。
+   * 非表示の案件など画面に出ていないものを飛び越えて入れ替えられるよう、
+   * 連番の振り直しは fullList に対して行い、交換は visibleList の隣どうしで行います。
+   */
+  function moveWithin(fullList, visibleList, id, delta) {
+    normalizeOrders(fullList);
+
+    var index = indexOfId(visibleList, id);
+    if (index < 0) { throw fail('並び替える対象が見つかりません。'); }
+
+    var to = index + (delta < 0 ? -1 : 1);
+    if (to < 0 || to >= visibleList.length) { return false; } // 端では動かさない
+
+    var a = visibleList[index];
+    var b = visibleList[to];
+    var tmp = a.order;
+    a.order = b.order;
+    b.order = tmp;
+
+    saveData();
+    return true;
+  }
+
+  // 部署を1つ上/下へ（CLAUDE.md 5.14）
+  function moveDepartment(id, delta) {
+    needDepartment(id);
+    var list = listDepartments();
+    return moveWithin(list, list, id, delta);
+  }
+
+  // 担当者を1つ上/下へ。並びは所属部署の中でだけ動く（CLAUDE.md 5.14）
+  function moveMember(id, delta) {
+    var member = needMember(id);
+    var list = listMembers(member.deptId);
+    return moveWithin(list, list, id, delta);
+  }
+
+  /*
+   * 案件を1つ上/下へ。同じ担当者の中でだけ動きます（CLAUDE.md 5.14）。
+   * includeHidden は「非表示を表示」トグルの状態。
+   * OFF のときは画面に出ている案件どうしで入れ替えます（隠れている行は飛び越える）。
+   */
+  function moveProject(id, delta, includeHidden) {
+    var project = needProject(id);
+    var full = listProjects(project.assigneeId, true);
+    var visible = includeHidden ? full : listProjects(project.assigneeId, false);
+    return moveWithin(full, visible, id, delta);
+  }
+
+  /* ============================================================
    * 社休日の CRUD（CLAUDE.md 4.3 / 5.8）
    *
    * 会社の休業日。各要素はその日の午前の半日シリアル値（偶数）で、
@@ -1268,6 +1342,12 @@
     addMember: addMember,
     updateMember: updateMember,
     removeMember: removeMember,
+
+    // 並び替え
+    normalizeOrders: normalizeOrders,
+    moveDepartment: moveDepartment,
+    moveMember: moveMember,
+    moveProject: moveProject,
 
     // 社休日
     listCompanyHolidays: listCompanyHolidays,
