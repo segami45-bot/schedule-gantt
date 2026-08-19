@@ -731,15 +731,6 @@ body.is-dragging-modal { user-select: none; }
 
 .rows .row--project.is-row-hover .rowhover { opacity: 1; }
 
-/*
- * TW・有休 の文字も、ハイライトの下に入ったように見せます（CLAUDE.md 5.4）。
- * 色付きバーとの前後関係（文字が前面）は変えたくないので、要素は動かさず
- * 文字の側を薄くしています。0.45 は --row-hover の不透明度 0.55 の残りぶんで、
- * ハイライトの下に置いたのとほぼ同じ見え方になります。
- * （--row-hover の濃さを変えるときは、この値も合わせてください）
- */
-.rows .row--project.is-row-hover .bar--mark.is-under-hover { opacity: .45; }
-
 /* ---- 部署見出し行 ---- */
 .row--dept {
   background: var(--row-dept-bg);

@@ -266,14 +266,6 @@ var Render = (function () {
     // 文字色は工程ごとの既定色か白（CLAUDE.md 6.2）
     var markKey = bar.markColor === 'white' ? 'white' : MARK_KEYS[bar.stage];
     var label = el('div', 'bar bar--mark mark--' + markKey);
-    /*
-     * TW・有休 は「その人の予定」を示す背景寄りの情報なので、
-     * 行ホバーのハイライトの下に見せます（CLAUDE.md 5.4 の重なり順）。
-     * 色付きバーとの前後関係は変えたくないので、位置は動かさず印だけ付けます。
-     */
-    if (bar.stage === TW_STAGE || bar.stage === YUKYU_STAGE) {
-      label.className += ' is-under-hover';
-    }
     label.appendChild(el('span', 'bar__hit', Store.barLabel(bar)));
 
     var nodes = [hit, label];
