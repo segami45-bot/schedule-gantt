@@ -780,6 +780,28 @@ var Render = (function () {
   }
 
   /*
+   * 案件行のホバーハイライトを左右で連動させます（CLAUDE.md 5.4）。
+   * 行ラベル列と日付グリッドは別の入れ物なので、CSS の :hover だけでは
+   * 片側しか光りません。どちらにポインタが入っても両方に同じ印を付けます。
+   * ホバーの無いタッチ環境では光らせません。
+   */
+  function linkRowHover(labelNode, gridNode) {
+    var pair = [labelNode, gridNode];
+
+    function setHover(on) {
+      pair.forEach(function (node) { node.classList.toggle('is-row-hover', on); });
+    }
+
+    pair.forEach(function (node) {
+      // pointerenter / pointerleave は子要素を出入りしても起きない（行単位で数えられる）
+      node.addEventListener('pointerenter', function (e) {
+        if (!isTouchEvent(e)) { setHover(true); }
+      });
+      node.addEventListener('pointerleave', function () { setHover(false); });
+    });
+  }
+
+  /*
    * 並び替えの▲▼ボタン（CLAUDE.md 5.14）。
    * 端（いちばん上の▲・いちばん下の▼）は押せない見た目にします。
    * クリックは行のクリック（5.6）に伝えません。
@@ -1003,13 +1025,15 @@ var Render = (function () {
     labels.appendChild(el('div', 'gantt__label-head', '担当者 / 案件'));
 
     var labelBody = el('div', 'gantt__label-body');
+    var labelRowNodes = []; // 右のグリッド行と対応づけるために控えておく（CLAUDE.md 5.4）
     if (rows.length === 0) {
       labelBody.appendChild(el('p', 'placeholder',
         '部署と担当者がまだ登録されていません。右上の［設定］から登録してください。'));
     } else {
-      rows.forEach(function (row) {
+      rows.forEach(function (row, i) {
         var node = buildLabelRow(row, opts);
         if (row.kind === 'project') { makeLabelClickable(node, row.project); }
+        labelRowNodes[i] = node;
         labelBody.appendChild(node);
       });
     }
@@ -1024,9 +1048,13 @@ var Render = (function () {
     body.appendChild(buildStripes(days)); // 列の色（背面）
 
     var rowsNode = el('div', 'rows');       // 行とバー（前面）
-    rows.forEach(function (row) {
+    rows.forEach(function (row, i) {
       var node = buildGridRow(row, days, viewStartDay, view.dayCount, dayMarks);
-      if (row.kind === 'project') { makeCellClickable(node, row.project); }
+      if (row.kind === 'project') {
+        makeCellClickable(node, row.project);
+        // 左右の行を対応づけ、どちらに乗っても行全体が光るようにする（CLAUDE.md 5.4）
+        linkRowHover(labelRowNodes[i], node);
+      }
       rowsNode.appendChild(node);
     });
     body.appendChild(rowsNode);

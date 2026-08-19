@@ -62,6 +62,13 @@
   /* 有休は日曜・祝日の列背景色と常に同じ色にする（CLAUDE.md 6.4） */
   --day-yukyu: var(--c-off);
 
+  /*
+   * 案件行のホバー色（CLAUDE.md 5.4）。左右の行で共通に使います。
+   * 半透明なのは、今日・土日祝・社休日・TW・有休・MT のセル色を透かせるためです
+   * （従来のグリッド側ホバーと同じ値）。
+   */
+  --row-hover: rgba(238, 244, 251, .55);
+
   /* ---- 行の背景色（CLAUDE.md 6.3） ---- */
   --row-dept-bg:    #eef0f2;  /* 部署見出し行 */
   --row-member-bg:  #fafbfc;  /* 担当者ヘッダ行 */
@@ -351,7 +358,12 @@ body.is-dragging-modal { user-select: none; }
   bottom: 0;
   align-items: center;
   padding-left: 6px;
-  background: var(--row-project-bg);
+  /*
+   * 下のタイトルを隠すための塗り。▲▼が出るのは行ラベルにポインタがある間だけで、
+   * そのとき行は必ずホバー色なので、行と同じ2層（行の色＋ホバー色）にして合わせます。
+   */
+  background-color: var(--row-project-bg);
+  background-image: linear-gradient(var(--row-hover), var(--row-hover));
   opacity: 0;
   transition: opacity .12s ease;
   pointer-events: none;
@@ -363,9 +375,6 @@ body.is-dragging-modal { user-select: none; }
   opacity: 1;
   pointer-events: auto;
 }
-
-/* 行のホバー色に背景をそろえる（CLAUDE.md 5.14 はホバー中のみ表示） */
-.gantt__label-body .row--project.is-clickable:hover .movebtns--row { background: #eef4fb; }
 
 .movebtns--row .movebtn {
   width: 18px;
@@ -699,9 +708,13 @@ body.is-dragging-modal { user-select: none; }
 /* 案件行はクリックで編集ポップアップが開く（CLAUDE.md 5.6） */
 .row.is-clickable { cursor: pointer; }
 
-.gantt__label-body .row.is-clickable:hover { background: #eef4fb; }
-
-.rows .row.is-clickable:hover { background: rgba(238, 244, 251, .55); }
+/*
+ * 案件行のホバー（CLAUDE.md 5.4）。
+ * 左の行ラベルと右のグリッドは別の入れ物なので、:hover ではなく
+ * render.js が両方に付ける .is-row-hover で光らせ、行単位で連動させます。
+ */
+.gantt__label-body .row--project.is-row-hover,
+.rows .row--project.is-row-hover { background: var(--row-hover); }
 
 /* ---- 部署見出し行 ---- */
 .row--dept {
