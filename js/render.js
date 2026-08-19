@@ -1030,9 +1030,23 @@ var Render = (function () {
     root.innerHTML = '';
     root.style.setProperty('--day-count', String(view.dayCount));
 
+    /* ---- 上: 固定ヘッダの帯（CLAUDE.md 5.1） ----
+     * 見出しセル（「担当者 / 案件」）と日付ヘッダをまとめた帯です。
+     * 横スクロールする容器の外に置き、ページの縦スクロールに対して
+     * 貼り付く（sticky）ようにしています。
+     * 横方向は、下の日付グリッドのスクロール位置を写して同期させます。
+     */
+    var head = el('div', 'gantt__head');
+    head.appendChild(el('div', 'gantt__label-head', '担当者 / 案件'));
+
+    var headScroll = el('div', 'gantt__head-scroll');
+    var headInner = el('div', 'gantt__head-inner');
+    headInner.appendChild(buildCalendar(days));
+    headScroll.appendChild(headInner);
+    head.appendChild(headScroll);
+
     /* ---- 左: 行ラベル列 ---- */
     var labels = el('div', 'gantt__labels');
-    labels.appendChild(el('div', 'gantt__label-head', '担当者 / 案件'));
 
     var labelBody = el('div', 'gantt__label-body');
     var labelRowNodes = []; // 右のグリッド行と対応づけるために控えておく（CLAUDE.md 5.4）
@@ -1052,7 +1066,6 @@ var Render = (function () {
     /* ---- 右: 横スクロールする日付グリッド ---- */
     var scroll = el('div', 'gantt__scroll');
     var grid = el('div', 'gantt__grid');
-    grid.appendChild(buildCalendar(days));
 
     var body = el('div', 'gantt__rows');
     body.appendChild(buildStripes(days)); // 列の色（背面）
@@ -1072,8 +1085,17 @@ var Render = (function () {
     grid.appendChild(body);
     scroll.appendChild(grid);
 
-    root.appendChild(labels);
-    root.appendChild(scroll);
+    // 横スクロールを固定ヘッダの日付ヘッダに写す（CLAUDE.md 5.1）
+    scroll.addEventListener('scroll', function () {
+      headScroll.scrollLeft = scroll.scrollLeft;
+    });
+
+    var bodyRow = el('div', 'gantt__body'); // 行ラベル列と日付グリッドを横に並べる
+    bodyRow.appendChild(labels);
+    bodyRow.appendChild(scroll);
+
+    root.appendChild(head);
+    root.appendChild(bodyRow);
   }
 
   /* ============================================================

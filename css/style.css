@@ -645,9 +645,45 @@ body.is-dragging-modal { user-select: none; }
  * 左: 行ラベル列 / 右: 横スクロールする日付グリッド
  * ============================================================ */
 .gantt {
+  border-top: 0;
+}
+
+/* ---- 上: 固定ヘッダの帯（CLAUDE.md 5.1） ----
+ * 見出しセル＋日付ヘッダをまとめた帯。ページを下にスクロールしても
+ * 画面上部に貼り付きます（期間コントロールバーは貼り付きません）。
+ *
+ * 横スクロールする容器（.gantt__scroll）の中に置くと、
+ * ページの縦スクロールに対して sticky が効かないため、
+ * 帯は容器の外に出し、横位置だけを render.js が同期させています。
+ */
+.gantt__head {
+  position: sticky;
+  top: 0;
+  /* 行ホバー・バー・日ハイライトより前面。ポップアップ（<dialog>）はさらに前面 */
+  z-index: 30;
+  display: flex;
+  background: var(--c-bg-sub);
+}
+
+/* 日付ヘッダを入れる窓。スクロールバーは出さず、位置だけを合わせる */
+.gantt__head-scroll {
+  flex: 1 1 auto;
+  overflow-x: hidden;
+}
+
+/* 下の日付グリッド（.gantt__grid）と同じ幅の決め方にして、列をそろえる */
+.gantt__head-inner {
+  width: 100%;
+  min-width: calc(var(--col-width) * var(--day-count));
+}
+
+/* ---- 本体: 左に行ラベル列 / 右に日付グリッド ---- */
+.gantt__body {
   display: flex;
   align-items: flex-start;
-  border-top: 0;
+  /* 中のバー（z-index 1〜2）が固定ヘッダより前に出ないよう、層を閉じる */
+  position: relative;
+  z-index: 0;
 }
 
 /* ---- 左の行ラベル列 ---- */
@@ -657,7 +693,10 @@ body.is-dragging-modal { user-select: none; }
   border-right: 1px solid var(--c-border-strong);
 }
 
+/* 固定ヘッダの左端。行ラベル列と同じ幅・同じ境界線にして縦線をそろえる */
 .gantt__label-head {
+  flex: 0 0 var(--label-width);
+  width: var(--label-width);
   height: var(--cal-height);
   display: flex;
   align-items: center;
@@ -665,6 +704,7 @@ body.is-dragging-modal { user-select: none; }
   font-size: 12px;
   color: var(--c-text-sub);
   background: var(--c-bg-sub);
+  border-right: 1px solid var(--c-border-strong);
   border-bottom: 1px solid var(--c-border-strong);
 }
 
